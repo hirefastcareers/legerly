@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f7f5f0;
+  --foreground: #1c1917;
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --surface: rgba(255, 255, 255, 0.75);
+  --ring: #0d9488;
+}
+
+.dark {
+  --background: #0c0a09;
+  --foreground: #fafaf9;
+  --accent: #2dd4bf;
+  --accent-soft: #134e4a;
+  --surface: rgba(28, 25, 23, 0.7);
+  --ring: #14b8a6;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-serif {
+  font-family: var(--font-serif), ui-serif, Georgia, serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Subtle page enter */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: rise 0.45s ease-out both;
+}
+
+.animate-rise-delay-1 {
+  animation: rise 0.45s ease-out 0.08s both;
+}
+
+.animate-rise-delay-2 {
+  animation: rise 0.45s ease-out 0.16s both;
+}

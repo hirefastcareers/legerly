@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  transactions  Transaction[]
+  rules         Rule[]
+  receipts      Receipt[]
+  tags          Tag[]
+  mileageLogs   MileageLog[]
+  wfhLogs       WfhLog[]
+  sessions      Session[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String   @id @default(cuid())
+  userId                String
+  provider              String   @default("monzo")
+  providerAccountId     String
+  accountType           String   // personal | business
+  accountName           String?
+  description           String?
+  currency              String   @default("GBP")
+  encryptedAccessToken  String
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+  monzoUserId           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]
+
+  @@unique([provider, providerAccountId])
+}
+
+model Transaction {
+  id                String   @id @default(cuid())
+  userId            String
+  accountId         String?
+  monzoTransactionId String? @unique
+  amount            Int      // minor units (pence), negative = outflow
+  currency          String   @default("GBP")
+  description       String
+  merchantName      String?
+  monzoCategory     String?
+  notes             String?
+  created           DateTime
+  settled           DateTime?
+  isPotTransfer     Boolean  @default(false)
+  isExcluded        Boolean  @default(false)
+  source            String   @default("monzo") // monzo | manual | upload
+
+  // Tax categorisation
+  hmrcCategory      String?  // HMRC box key
+  businessPercent   Float    @default(100)
+  isTaxClaimable    Boolean  @default(false)
+  aiConfidence      Float?
+  aiExplanation     String?
+  status            String   @default("pending") // pending | confirmed | overridden
+  isIncome          Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account           Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  receipts          Receipt[]
+  tags              TransactionTag[]
+
+  @@index([userId, created])
+  @@index([hmrcCategory])
+  @@index([status])
+}
+
+model Rule {
+  id            String   @id @default(cuid())
+  userId        String?
+  merchantMatch String
+  matchType     String   @default("contains") // exact | contains | starts_with
+  hmrcCategory  String
+  businessPercent Float  @default(100)
+  isTaxClaimable Boolean @default(true)
+  isSystem      Boolean  @default(false)
+  priority      Int      @default(100)
+  explanation   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([merchantMatch])
+}
+
+model Receipt {
+  id            String   @id @default(cuid())
+  userId        String
+  transactionId String?
+  filename      String
+  mimeType      String
+  storagePath   String
+  ocrTotal      Float?
+  ocrDate       DateTime?
+  ocrMerchant   String?
+  ocrRaw        String?
+  monzoAttachmentId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("#0d9488")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+
+  @@unique([userId, name])
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag           Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+}
+
+model MileageLog {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  miles       Float
+  purpose     String?
+  ratePence   Int      @default(45) // 45p first 10k, 25p after
+  taxYear     String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WfhLog {
+  id          String   @id @default(cuid())
+  userId      String
+  month       String   // YYYY-MM
+  hoursPerMonth Int
+  flatRatePence Int    // HMRC simplified rate
+  taxYear     String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+}
+
+model OAuthState {
+  id        String   @id @default(cuid())
+  state     String   @unique
+  accountType String // personal | business
+  userId    String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
