@@ -383,7 +383,9 @@ export function DashboardClient() {
             </div>
             <p className="text-xs text-stone-500">
               Use <strong>Import full history</strong> after approving in the Monzo app (tax year
-              data). Use <strong>Sync from Monzo</strong> afterwards for new transactions only.
+              data). Monzo only allows a long backfill for a few minutes after approval, and each API
+              request can cover at most ~1 year — Ledgerly chunks that automatically. Use{" "}
+              <strong>Sync from Monzo</strong> afterwards for new transactions only (~90 days).
             </p>
 
             <div className="grid gap-3 sm:grid-cols-2">

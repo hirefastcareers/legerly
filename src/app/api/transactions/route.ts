@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
             ? { status }
             : {};
 
-    const [transactions, totalImported, pendingCount] = await Promise.all([
+    const [transactions, totalImported, pendingCount, oldest, newest] = await Promise.all([
       prisma.transaction.findMany({
         where: {
           userId,
@@ -72,6 +72,16 @@ export async function GET(req: NextRequest) {
       }),
       prisma.transaction.count({ where: { userId } }),
       prisma.transaction.count({ where: { userId, status: "pending" } }),
+      prisma.transaction.findFirst({
+        where: { userId, source: "monzo" },
+        orderBy: { created: "asc" },
+        select: { created: true },
+      }),
+      prisma.transaction.findFirst({
+        where: { userId, source: "monzo" },
+        orderBy: { created: "desc" },
+        select: { created: true },
+      }),
     ]);
 
     return NextResponse.json({
@@ -82,6 +92,11 @@ export async function GET(req: NextRequest) {
         { value: "all", label: "All imported", range: "Every transaction stored in Ledgerly" },
         ...taxYearSelectOptions(6),
       ],
+      coverage: {
+        oldest: oldest?.created?.toISOString() ?? null,
+        newest: newest?.created?.toISOString() ?? null,
+        totalImported,
+      },
       counts: {
         shown: transactions.length,
         totalImported,

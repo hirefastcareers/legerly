@@ -13,7 +13,18 @@ export async function syncAccountTransactions(
   dbAccountId: string,
   userId: string,
   options?: { since?: string; fullHistory?: boolean }
-): Promise<{ imported: number; skipped: number; categorised: number; accountName?: string }> {
+): Promise<{
+  imported: number;
+  skipped: number;
+  declined: number;
+  alreadyStored: number;
+  categorised: number;
+  fetched: number;
+  oldest?: string;
+  newest?: string;
+  accountName?: string;
+  fullHistory?: boolean;
+}> {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: dbAccountId } });
 
   if (account.providerAccountId.startsWith("pending_") || account.providerAccountId.startsWith("demo_")) {
@@ -57,22 +68,39 @@ export async function syncAccountTransactions(
 
   let imported = 0;
   let skipped = 0;
+  let declined = 0;
+  let alreadyStored = 0;
   let categorised = 0;
 
   for (const tx of txs) {
     const result = await upsertMonzoTransaction(tx, userId, dbAccountId);
-    if (result === "skipped") skipped++;
-    else {
+    if (result === "declined") {
+      declined++;
+      skipped++;
+    } else if (result === "duplicate") {
+      alreadyStored++;
+      skipped++;
+    } else if (result === "skipped") {
+      skipped++;
+    } else {
       imported++;
       if (result === "categorised") categorised++;
     }
   }
 
+  const times = txs.map((t) => t.created).sort();
+
   return {
     imported,
     skipped,
+    declined,
+    alreadyStored,
     categorised,
+    fetched: txs.length,
+    oldest: times[0],
+    newest: times[times.length - 1],
     accountName: matching.description,
+    fullHistory: Boolean(options?.fullHistory),
   };
 }
 
@@ -80,13 +108,13 @@ export async function upsertMonzoTransaction(
   tx: MonzoTransaction,
   userId: string,
   accountId: string
-): Promise<"skipped" | "imported" | "categorised"> {
-  if (tx.decline_reason) return "skipped";
+): Promise<"skipped" | "declined" | "duplicate" | "imported" | "categorised"> {
+  if (tx.decline_reason) return "declined";
 
   const existing = await prisma.transaction.findUnique({
     where: { monzoTransactionId: tx.id },
   });
-  if (existing) return "skipped";
+  if (existing) return "duplicate";
 
   const pot = isPotTransfer(tx);
   const merchantName = tx.merchant?.name ?? null;

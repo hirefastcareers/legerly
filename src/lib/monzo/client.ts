@@ -75,6 +75,9 @@ export class MonzoApiError extends Error {
     if (this.code === "forbidden.verification_required" || /verification required/i.test(this.message)) {
       return "Monzo blocked a long history request outside the fresh-login window. Click Reconnect Monzo (full history) to import your tax year, then use Sync for new activity only.";
     }
+    if (this.status === 400 && /year|since|before|range|invalid/i.test(`${this.message} ${this.body}`)) {
+      return "Monzo rejected that date range. Ledgerly now imports history in under-1-year chunks — reconnect and run Import full history again.";
+    }
     if (this.status === 403) {
       return "Open the Monzo app → approve this client, or Profile → Settings → Manage apps → refresh access, then Reconnect Monzo.";
     }
@@ -279,57 +282,138 @@ function daysAgoIso(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-/** Paginated transaction fetch — defaults to last 90 days (Monzo SCA limit). */
-export async function fetchAllTransactions(
+/** Monzo rejects a single /transactions call spanning more than ~1 year. */
+const MONZO_MAX_WINDOW_MS = 360 * 24 * 60 * 60 * 1000;
+const FULL_HISTORY_DAYS = 365 * 3;
+
+function buildHistoryWindows(oldestIso: string, newestIso?: string): Array<{ since: string; before: string }> {
+  const oldest = new Date(oldestIso).getTime();
+  const newest = newestIso ? new Date(newestIso).getTime() : Date.now() + 60_000;
+  const windows: Array<{ since: string; before: string }> = [];
+  let cursor = oldest;
+  while (cursor < newest) {
+    const end = Math.min(cursor + MONZO_MAX_WINDOW_MS, newest);
+    windows.push({
+      since: new Date(cursor).toISOString(),
+      before: new Date(end).toISOString(),
+    });
+    cursor = end;
+  }
+  return windows;
+}
+
+/**
+ * Fetch one since/before window with pagination.
+ * Dedupes by id and advances `before` carefully so same-second txs are not skipped.
+ */
+async function fetchTransactionWindow(
   accountId: string,
   monzoAccountId: string,
-  options?: { since?: string; before?: string; fullHistory?: boolean }
+  since: string,
+  before?: string
 ): Promise<MonzoTransaction[]> {
-  const results: MonzoTransaction[] = [];
-  let before = options?.before;
-  // fullHistory only works in the ~5 minute window after SCA approval
-  const since =
-    options?.since ??
-    daysAgoIso(options?.fullHistory ? 365 * 3 : MONZO_SAFE_HISTORY_DAYS);
+  const byId = new Map<string, MonzoTransaction>();
+  let cursorBefore = before;
+  let stagnant = 0;
 
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 80; i++) {
     const params = new URLSearchParams({
       account_id: monzoAccountId,
       limit: "100",
       since,
     });
     params.append("expand[]", "merchant");
-    if (before) params.set("before", before);
+    if (cursorBefore) params.set("before", cursorBefore);
 
-    try {
-      const data = await monzoFetch<{ transactions: MonzoTransaction[] }>(
-        accountId,
-        `/transactions?${params.toString()}`
-      );
+    const data = await monzoFetch<{ transactions: MonzoTransaction[] }>(
+      accountId,
+      `/transactions?${params.toString()}`
+    );
 
-      const batch = data.transactions ?? [];
-      if (batch.length === 0) break;
-      results.push(...batch);
-      before = batch[batch.length - 1].created;
-      if (batch.length < 100) break;
-    } catch (err) {
-      // If long history is forbidden, retry once with 90-day window
-      if (
-        err instanceof MonzoApiError &&
-        err.needsReauth &&
-        options?.fullHistory &&
-        !options.since
-      ) {
-        return fetchAllTransactions(accountId, monzoAccountId, {
-          before: options.before,
-          fullHistory: false,
-        });
+    const batch = data.transactions ?? [];
+    if (batch.length === 0) break;
+
+    let added = 0;
+    for (const tx of batch) {
+      if (!byId.has(tx.id)) {
+        byId.set(tx.id, tx);
+        added++;
       }
-      throw err;
     }
+
+    // Oldest in this page (Monzo returns newest-first)
+    const oldest = batch.reduce((a, b) => (a.created < b.created ? a : b));
+    const nextBefore = new Date(new Date(oldest.created).getTime() - 1).toISOString();
+
+    if (added === 0) {
+      stagnant++;
+      if (stagnant >= 2) break;
+      cursorBefore = nextBefore;
+      continue;
+    }
+    stagnant = 0;
+
+    if (batch.length < 100) break;
+    cursorBefore = nextBefore;
   }
 
-  return results;
+  return Array.from(byId.values());
+}
+
+/**
+ * Paginated transaction fetch.
+ * - Incremental: last 90 days (Monzo SCA limit after cool-down)
+ * - Full history: chunked into <1-year windows (Monzo returns 400 for wider ranges)
+ *   and only works in the ~5 minute window after SCA approval
+ */
+export async function fetchAllTransactions(
+  accountId: string,
+  monzoAccountId: string,
+  options?: { since?: string; before?: string; fullHistory?: boolean }
+): Promise<MonzoTransaction[]> {
+  const wantFull = Boolean(options?.fullHistory) && !options?.since;
+
+  try {
+    if (wantFull) {
+      // Newest window first so we keep recent data if SCA cools mid-import
+      const windows = buildHistoryWindows(daysAgoIso(FULL_HISTORY_DAYS), options?.before).reverse();
+      const byId = new Map<string, MonzoTransaction>();
+      for (const window of windows) {
+        try {
+          const batch = await fetchTransactionWindow(
+            accountId,
+            monzoAccountId,
+            window.since,
+            window.before
+          );
+          for (const tx of batch) byId.set(tx.id, tx);
+        } catch (err) {
+          if (err instanceof MonzoApiError && err.needsReauth) {
+            // SCA cooled down — keep what we already fetched (newer windows)
+            if (byId.size > 0) break;
+            return fetchAllTransactions(accountId, monzoAccountId, {
+              before: options?.before,
+              fullHistory: false,
+            });
+          }
+          throw err;
+        }
+      }
+      return Array.from(byId.values());
+    }
+
+    const since = options?.since ?? daysAgoIso(MONZO_SAFE_HISTORY_DAYS);
+    return fetchTransactionWindow(accountId, monzoAccountId, since, options?.before);
+  } catch (err) {
+    // Outside the fresh-login SCA window, long history is forbidden — fall back to 90 days
+    if (err instanceof MonzoApiError && err.needsReauth && wantFull) {
+      return fetchAllTransactions(accountId, monzoAccountId, {
+        before: options?.before,
+        fullHistory: false,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function pingMonzo(accountId: string): Promise<{ authenticated: boolean; userId?: string }> {

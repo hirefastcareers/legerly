@@ -47,6 +47,11 @@ type ListResponse = {
   availableYears?: string[];
   yearOptions?: Array<{ value: string; label: string; range: string }>;
   taxYear?: string;
+  coverage?: {
+    oldest: string | null;
+    newest: string | null;
+    totalImported: number;
+  };
   counts?: {
     shown: number;
     totalImported: number;
@@ -65,6 +70,7 @@ export function TransactionsClient() {
     Array<{ value: string; label: string; range: string }>
   >([{ value: "all", label: "All imported", range: "Every transaction stored in Ledgerly" }]);
   const [counts, setCounts] = useState<ListResponse["counts"]>();
+  const [coverage, setCoverage] = useState<ListResponse["coverage"]>();
   const [q, setQ] = useState("");
   const [pending, startTransition] = useTransition();
   const [splitId, setSplitId] = useState<string | null>(null);
@@ -86,6 +92,7 @@ export function TransactionsClient() {
         );
       }
       if (json?.counts) setCounts(json.counts);
+      if (json?.coverage) setCoverage(json.coverage);
     });
   }, [status, accountType, q, taxYear]);
 
@@ -180,6 +187,16 @@ export function TransactionsClient() {
           Changing the category (or split) also marks it reviewed — you don&apos;t need Confirm after
           that. Use tax year <strong>All imported</strong> to see history outside the current year.
         </p>
+        {coverage?.oldest && coverage?.newest && (
+          <p className="mt-2 max-w-2xl text-sm text-stone-500">
+            Stored Monzo range:{" "}
+            {new Date(coverage.oldest).toLocaleDateString("en-GB")} →{" "}
+            {new Date(coverage.newest).toLocaleDateString("en-GB")} ({coverage.totalImported}{" "}
+            transactions). Empty days usually mean no card spend on that feed — not a sync hole.
+            Declined payments are not imported. If this range starts after Apr 2025, reconnect Monzo
+            and run <strong>Import full history</strong> right after approving in the app.
+          </p>
+        )}
       </header>
 
       <Card className="animate-rise-delay-1">
