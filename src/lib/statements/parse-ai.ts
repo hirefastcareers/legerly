@@ -40,6 +40,8 @@ export async function parseStatementWithAi(input: {
       warnings: [
         "AI statement scan is off. Set ENABLE_AI=true and OPENAI_API_KEY, or upload a Monzo CSV instead (free).",
       ],
+      sourceRows: 0,
+      skippedRows: 0,
     };
   }
 
@@ -113,7 +115,7 @@ Rules:
     });
   }
 
-  return { rows, format: "ai_statement", warnings: warnings.slice(0, 20) };
+  return { rows, format: "ai_statement", warnings: warnings.slice(0, 40), sourceRows: rows.length + warnings.length, skippedRows: warnings.length };
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {

@@ -51,6 +51,15 @@ type ListResponse = {
     oldest: string | null;
     newest: string | null;
     totalImported: number;
+    combined?: {
+      total: number;
+      pending: number;
+      byFeed: Record<string, { total: number; pending: number }>;
+      byTaxYear: Record<
+        string,
+        { total: number; pending: number; personal: number; business: number }
+      >;
+    };
   };
   counts?: {
     shown: number;
@@ -99,12 +108,21 @@ export function TransactionsClient() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("taxYear");
+    const statusUrl = params.get("status");
     if (fromUrl) setTaxYear(fromUrl);
+    if (statusUrl) setStatus(statusUrl);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (taxYear) url.searchParams.set("taxYear", taxYear);
+    if (status) url.searchParams.set("status", status);
+    window.history.replaceState({}, "", url.toString());
+  }, [taxYear, status]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -189,19 +207,49 @@ export function TransactionsClient() {
         </p>
         <h1 className="font-serif text-4xl font-semibold tracking-tight">Categorisation workspace</h1>
         <p className="mt-2 max-w-2xl text-stone-600 dark:text-stone-400">
-          Check every Monzo payment here. <strong>Confirm</strong> accepts the suggested category.
-          Changing the category (or split) also marks it reviewed — you don&apos;t need Confirm after
-          that. Use tax year <strong>All imported</strong> to see history outside the current year.
+          Personal and Business feeds are combined here. Pick a <strong>tax year</strong>, work
+          through every line, and press <strong>Confirm</strong> when the suggested category is
+          right — or change the category/split yourself.{" "}
+          <a href="/statements" className="font-medium text-teal-800 underline dark:text-teal-300">
+            Import more statements
+          </a>{" "}
+          anytime.
         </p>
         {coverage?.oldest && coverage?.newest && (
           <p className="mt-2 max-w-2xl text-sm text-stone-500">
-            Stored Monzo range:{" "}
-            {new Date(coverage.oldest).toLocaleDateString("en-GB")} →{" "}
+            Stored range: {new Date(coverage.oldest).toLocaleDateString("en-GB")} →{" "}
             {new Date(coverage.newest).toLocaleDateString("en-GB")} ({coverage.totalImported}{" "}
-            transactions). Empty days usually mean no card spend on that feed — not a sync hole.
-            Declined payments are not imported. If this range starts after Apr 2025, reconnect Monzo
-            and run <strong>Import full history</strong> right after approving in the app.
+            transactions
+            {coverage.combined
+              ? ` · P${coverage.combined.byFeed.personal?.total ?? 0}/B${
+                  coverage.combined.byFeed.business?.total ?? 0
+                }`
+              : ""}
+            ).
           </p>
+        )}
+        {coverage?.combined?.byTaxYear && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Object.entries(coverage.combined.byTaxYear)
+              .sort(([a], [b]) => b.localeCompare(a))
+              .map(([year, stats]) => (
+                <button
+                  key={year}
+                  type="button"
+                  onClick={() => {
+                    setTaxYear(year);
+                    setStatus("needs_review");
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    taxYear === year
+                      ? "border-teal-700 bg-teal-700 text-white"
+                      : "border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300"
+                  }`}
+                >
+                  {year}: {stats.pending} left / {stats.total}
+                </button>
+              ))}
+          </div>
         )}
       </header>
 

@@ -7,6 +7,7 @@ import {
   listTaxYears,
   taxYearSelectOptions,
 } from "@/lib/tax/tax-year";
+import { getCombinedCoverage } from "@/lib/statements/import";
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,14 +45,18 @@ export async function GET(req: NextRequest) {
             ? { status }
             : {};
 
-    const [transactions, totalImported, pendingCount, oldest, newest] = await Promise.all([
+    const whereBase = {
+      userId,
+      ...dateFilter,
+      ...(source && source !== "all" ? { source } : {}),
+      ...(accounts ? { accountId: { in: accounts.map((a) => a.id) } } : {}),
+    };
+
+    const [transactions, totalImported, pendingInFilter, coverage] = await Promise.all([
       prisma.transaction.findMany({
         where: {
-          userId,
-          ...dateFilter,
+          ...whereBase,
           ...statusFilter,
-          ...(source && source !== "all" ? { source } : {}),
-          ...(accounts ? { accountId: { in: accounts.map((a) => a.id) } } : {}),
           ...(includeExcluded ? {} : {}),
           ...(q
             ? {
@@ -71,17 +76,8 @@ export async function GET(req: NextRequest) {
         orderBy: { created: "desc" },
       }),
       prisma.transaction.count({ where: { userId } }),
-      prisma.transaction.count({ where: { userId, status: "pending" } }),
-      prisma.transaction.findFirst({
-        where: { userId, source: "monzo" },
-        orderBy: { created: "asc" },
-        select: { created: true },
-      }),
-      prisma.transaction.findFirst({
-        where: { userId, source: "monzo" },
-        orderBy: { created: "desc" },
-        select: { created: true },
-      }),
+      prisma.transaction.count({ where: { ...whereBase, status: "pending" } }),
+      getCombinedCoverage(userId),
     ]);
 
     return NextResponse.json({
@@ -93,14 +89,15 @@ export async function GET(req: NextRequest) {
         ...taxYearSelectOptions(6),
       ],
       coverage: {
-        oldest: oldest?.created?.toISOString() ?? null,
-        newest: newest?.created?.toISOString() ?? null,
+        oldest: coverage.oldest,
+        newest: coverage.newest,
         totalImported,
+        combined: coverage,
       },
       counts: {
         shown: transactions.length,
         totalImported,
-        pending: pendingCount,
+        pending: pendingInFilter,
         currentTaxYear: getTaxYear().label,
       },
     });

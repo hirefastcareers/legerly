@@ -92,16 +92,25 @@ function pick(map: Record<string, string>, keys: string[]): string {
 
 /**
  * Parse Monzo export CSV or a generic bank CSV (Date / Description / Amount).
+ * Every non-empty body row is either imported into `rows` or listed in `warnings`.
  */
 export function parseBankCsv(text: string): StatementParseResult {
   const table = parseCsvText(text);
   if (table.length < 2) {
-    return { rows: [], format: "generic_csv", warnings: ["CSV had no data rows"] };
+    return {
+      rows: [],
+      format: "generic_csv",
+      warnings: ["CSV had no data rows"],
+      sourceRows: 0,
+      skippedRows: 0,
+    };
   }
 
   const headers = table[0].map(normHeader);
   const warnings: string[] = [];
   const rows: ParsedStatementRow[] = [];
+  let sourceRows = 0;
+  let skippedRows = 0;
 
   const isMonzo =
     headers.includes("transaction_id") ||
@@ -111,6 +120,7 @@ export function parseBankCsv(text: string): StatementParseResult {
   for (let i = 1; i < table.length; i++) {
     const cells = table[i];
     if (cells.every((c) => !c)) continue;
+    sourceRows++;
     const map: Record<string, string> = {};
     headers.forEach((h, idx) => {
       map[h] = cells[idx] ?? "";
@@ -120,7 +130,8 @@ export function parseBankCsv(text: string): StatementParseResult {
     const timeRaw = pick(map, ["time"]);
     const date = parseUkOrIsoDate(timeRaw ? `${dateRaw} ${timeRaw}` : dateRaw);
     if (!date) {
-      warnings.push(`Skipped row ${i + 1}: unreadable date "${dateRaw}"`);
+      skippedRows++;
+      warnings.push(`Row ${i + 1}: unreadable date "${dateRaw}" — not imported`);
       continue;
     }
 
@@ -138,17 +149,18 @@ export function parseBankCsv(text: string): StatementParseResult {
     }
 
     if (amountPence == null) {
-      warnings.push(`Skipped row ${i + 1}: unreadable amount`);
+      skippedRows++;
+      warnings.push(`Row ${i + 1}: unreadable amount — not imported`);
       continue;
     }
 
-    // Monzo CSV amount is signed already (negative = out)
     const name = pick(map, ["name", "merchant", "payee", "counterparty"]);
     const description =
       pick(map, ["description", "details", "narrative", "reference"]) || name || "Statement line";
     const notes = pick(map, ["notes", "note"]) || null;
     const externalId = pick(map, ["transaction_id", "id", "monzo_transaction_id"]) || null;
     const currency = pick(map, ["currency"]) || "GBP";
+    const timeKey = timeRaw || date.toISOString().slice(11, 19);
 
     rows.push({
       date,
@@ -159,24 +171,39 @@ export function parseBankCsv(text: string): StatementParseResult {
       notes,
       externalId: externalId || null,
       accountHint: null,
+      timeKey,
     });
+  }
+
+  if (skippedRows > 0) {
+    warnings.unshift(
+      `${skippedRows} of ${sourceRows} statement line(s) could not be parsed — check the list below so nothing is missed.`
+    );
   }
 
   return {
     rows,
     format: isMonzo ? "monzo_csv" : "generic_csv",
-    warnings: warnings.slice(0, 20),
+    warnings,
+    sourceRows,
+    skippedRows,
   };
 }
 
-export function fingerprintRow(row: ParsedStatementRow): string {
+/** Dedup key — always scoped by feed so Personal and Business never collide. */
+export function fingerprintRow(
+  row: ParsedStatementRow,
+  accountType: "personal" | "business" = "personal"
+): string {
   if (row.externalId?.startsWith("tx_")) return row.externalId;
   const basis = [
+    accountType,
     row.date.toISOString().slice(0, 10),
+    row.timeKey ?? "",
     row.amountPence,
     (row.merchantName ?? "").toLowerCase(),
-    row.description.toLowerCase().slice(0, 80),
+    row.description.toLowerCase().slice(0, 120),
   ].join("|");
   const hash = createHash("sha256").update(basis).digest("hex").slice(0, 24);
-  return `upload_${hash}`;
+  return `upload_${accountType}_${hash}`;
 }
