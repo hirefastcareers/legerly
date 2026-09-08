@@ -12,8 +12,10 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Building2,
+  CheckCircle2,
   PiggyBank,
   RefreshCw,
+  Smartphone,
   Trash2,
   User,
   Wallet,
@@ -59,6 +61,7 @@ type DashboardData = {
     demoAccountCount: number;
     demoTransactionCount: number;
     monzoUserCount?: number;
+    awaitingApproval?: boolean;
   };
 };
 
@@ -68,13 +71,20 @@ export function DashboardClient() {
   const [pending, startTransition] = useTransition();
   const [syncing, setSyncing] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [approvalReady, setApprovalReady] = useState(false);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAwaiting, setShowAwaiting] = useState(false);
 
   const load = useCallback(() => {
     startTransition(async () => {
       const json = await apiJson<DashboardData>("/api/dashboard");
-      if (json?.summary?.estimate) setData(json);
+      if (json?.summary?.estimate) {
+        setData(json);
+        if (json.status?.awaitingApproval) setShowAwaiting(true);
+      }
     });
   }, []);
 
@@ -90,14 +100,64 @@ export function DashboardClient() {
       );
     } else if (err === "oauth_failed") {
       setError("Monzo login failed. Check redirect URI matches exactly, then try Connect again.");
-    } else if (searchParams.get("connected")) {
-      const synced = searchParams.get("synced");
-      const accounts = searchParams.get("accounts");
+    } else if (searchParams.get("awaiting_approval") === "1") {
+      setShowAwaiting(true);
       setMessage(
-        `Monzo connected (${accounts ?? "?"} feeds). Imported full history on ${synced ?? "0"} account(s) while access was fresh. Later Syncs only pull the last 90 days of new activity.`
+        "Email login worked. Now open the Monzo app and approve access — then click Import full history here."
       );
     }
   }, [searchParams]);
+
+  // Poll Monzo approval status while waiting
+  useEffect(() => {
+    if (!showAwaiting) return;
+    let cancelled = false;
+
+    async function tick() {
+      try {
+        const res = await fetch("/api/monzo/import");
+        const json = await res.json();
+        if (cancelled) return;
+        if (!json.awaiting) {
+          setShowAwaiting(false);
+          load();
+          return;
+        }
+        setApprovalReady(Boolean(json.ready));
+        setApprovalMessage(json.message ?? null);
+      } catch {
+        /* ignore transient poll errors */
+      }
+    }
+
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [showAwaiting, load]);
+
+  async function importHistory() {
+    setImporting(true);
+    setError(null);
+    setMessage(null);
+    const res = await fetch("/api/monzo/import", { method: "POST" });
+    const json = await res.json();
+    setImporting(false);
+    if (!res.ok || json.ok === false) {
+      setError(json.error || "Import failed");
+      if (json.hint) setMessage(json.hint);
+      setShowAwaiting(true);
+      return;
+    }
+    setShowAwaiting(false);
+    setMessage(
+      json.message ||
+        `Imported full history for ${json.synced} account(s). Later Syncs only pull new activity.`
+    );
+    load();
+  }
 
   async function sync() {
     setSyncing(true);
@@ -122,12 +182,12 @@ export function DashboardClient() {
       setMessage(
         errs.length
           ? json.hint || "Sync finished with errors — see details below."
-          : `Synced from Monzo — ${imported} new transactions (last 90 days).`
+          : `Synced from Monzo — ${imported} new transactions (recent activity only).`
       );
       if (errs.length) {
         setError(
           errs
-            .map((e: { accountType?: string; error: string; hint?: string }) =>
+            .map((e: { accountType?: string; error: string }) =>
               `${e.accountType ?? "account"}: ${e.error}`
             )
             .join(" · ")
@@ -227,6 +287,47 @@ export function DashboardClient() {
         </div>
       )}
 
+      {(showAwaiting || status?.awaitingApproval) && (
+        <Card className="animate-rise border-teal-300 dark:border-teal-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-teal-700" />
+              Approve in the Monzo app
+            </CardTitle>
+            <CardDescription>
+              The website redirect finishes before Monzo grants permission. Open the Monzo app,
+              approve the access request (push notification / Manage apps), then import here.
+              Full tax-year history only works in this short window after approval.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-stone-600 dark:text-stone-300">
+              <li>Open the Monzo app on your phone</li>
+              <li>Approve Ledgerly / your OAuth client when prompted</li>
+              <li>Come back here and click Import full history</li>
+            </ol>
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant={approvalReady ? "success" : "warning"}>
+                {approvalReady ? (
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Approved — ready to import
+                  </span>
+                ) : (
+                  "Waiting for app approval…"
+                )}
+              </Badge>
+              {approvalMessage && (
+                <span className="text-xs text-stone-500">{approvalMessage}</span>
+              )}
+            </div>
+            <Button onClick={importHistory} disabled={importing}>
+              <RefreshCw className={`h-4 w-4 ${importing ? "animate-spin" : ""}`} />
+              {importing ? "Importing full history…" : "I've approved — import full history"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <section className="animate-rise-delay-1 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Turnover" value={formatGBP(est.turnover)} icon={<Wallet className="h-4 w-4" />} />
         <StatCard
@@ -248,20 +349,24 @@ export function DashboardClient() {
           <CardHeader>
             <CardTitle>Monzo connections</CardTitle>
             <CardDescription>
-              Monzo only allows <strong>one active token per login</strong>. Connect once — we
-              discover every Personal/Business feed on that login and import <strong>full history</strong>{" "}
-              immediately (needed for your tax year). Later Syncs only pull new activity (~90 days).
-              Reconnect anytime to re-import full history. Only use “another Monzo login” if Business
-              is a completely separate Monzo user.
+              Monzo only allows <strong>one active token per login</strong>. Connect once, then
+              approve in the Monzo app (after the browser redirect). Click{" "}
+              <strong>Import full history</strong> only after that approval — that&apos;s how we
+              capture your tax year. Later Syncs only pull new activity.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Button asChild>
                 <a href="/api/monzo/connect">
-                  {hasAnyLive ? "Reconnect Monzo (full history)" : "Connect Monzo"}
+                  {hasAnyLive ? "Reconnect Monzo" : "Connect Monzo"}
                 </a>
               </Button>
+              {(showAwaiting || status?.awaitingApproval) && (
+                <Button onClick={importHistory} disabled={importing} variant="secondary">
+                  {importing ? "Importing…" : "Import full history"}
+                </Button>
+              )}
               {hasAnyLive && (
                 <Button asChild variant="outline">
                   <a href="/api/monzo/connect?type=business">Connect another Monzo login</a>

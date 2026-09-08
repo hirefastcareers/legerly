@@ -13,7 +13,12 @@ export async function POST() {
       where: {
         userId,
         encryptedAccessToken: { not: "demo" },
-        NOT: { providerAccountId: { startsWith: "pending_" } },
+        NOT: {
+          OR: [
+            { providerAccountId: { startsWith: "pending_" } },
+            { providerAccountId: { startsWith: "awaiting_" } },
+          ],
+        },
       },
     });
 

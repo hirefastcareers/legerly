@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { encryptToken } from "@/lib/encryption";
 import { exchangeMonzoCode } from "@/lib/monzo/client";
-import { linkAllMonzoAccounts } from "@/lib/monzo/link-accounts";
+import { storeAwaitingApproval } from "@/lib/monzo/link-accounts";
 
+/**
+ * OAuth callback — store tokens only.
+ * Do NOT sync here: Monzo has not granted permissions until the user
+ * approves the push notification in the Monzo app (often AFTER this redirect).
+ */
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const stateParam = req.nextUrl.searchParams.get("state");
@@ -28,37 +33,24 @@ export async function GET(req: NextRequest) {
 
   try {
     const tokens = await exchangeMonzoCode(code);
-    const encryptedAccess = encryptToken(tokens.access_token);
-    const encryptedRefresh = tokens.refresh_token
-      ? encryptToken(tokens.refresh_token)
-      : null;
-
-    const result = await linkAllMonzoAccounts(
+    await storeAwaitingApproval(
       userId,
       {
-        encryptedAccessToken: encryptedAccess,
-        encryptedRefreshToken: encryptedRefresh,
+        encryptedAccessToken: encryptToken(tokens.access_token),
+        encryptedRefreshToken: tokens.refresh_token
+          ? encryptToken(tokens.refresh_token)
+          : null,
         tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
         monzoUserId: tokens.user_id,
       },
-      { fullHistory: true, preferredType: accountType }
+      accountType
     );
 
     await prisma.oAuthState.delete({ where: { id: oauthState.id } }).catch(() => undefined);
 
-    const types = Array.from(new Set(result.accounts.map((a) => a.accountType))).join(",");
-    return NextResponse.redirect(
-      new URL(
-        `/dashboard?connected=${encodeURIComponent(types || "monzo")}&synced=${result.synced}&accounts=${result.accounts.length}`,
-        req.url
-      )
-    );
+    return NextResponse.redirect(new URL("/dashboard?awaiting_approval=1", req.url));
   } catch (err) {
     console.error(err);
-    const msg = err instanceof Error ? err.message : "";
-    if (msg === "NO_ACCOUNTS") {
-      return NextResponse.redirect(new URL("/dashboard?error=no_accounts", req.url));
-    }
     return NextResponse.redirect(new URL("/dashboard?error=oauth_failed", req.url));
   }
 }

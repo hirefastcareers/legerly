@@ -25,21 +25,30 @@ export async function GET() {
     ]);
 
     const liveAccounts = accounts.filter(
-      (a) => a.encryptedAccessToken !== "demo" && !a.providerAccountId.startsWith("pending_")
+      (a) =>
+        a.encryptedAccessToken !== "demo" &&
+        !a.providerAccountId.startsWith("pending_") &&
+        !a.providerAccountId.startsWith("awaiting_")
     );
     const demoAccounts = accounts.filter((a) => a.encryptedAccessToken === "demo");
+    const awaitingApproval = accounts.some((a) => a.providerAccountId.startsWith("awaiting_"));
 
     return NextResponse.json({
       summary,
-      accounts: accounts.map((a) => ({
-        id: a.id,
-        accountType: a.accountType,
-        accountName: a.accountName,
-        description: a.description,
-        monzoUserId: a.monzoUserId,
-        isLive: a.encryptedAccessToken !== "demo" && !a.providerAccountId.startsWith("pending_"),
-        isDemo: a.encryptedAccessToken === "demo",
-      })),
+      accounts: accounts
+        .filter((a) => !a.providerAccountId.startsWith("awaiting_"))
+        .map((a) => ({
+          id: a.id,
+          accountType: a.accountType,
+          accountName: a.accountName,
+          description: a.description,
+          monzoUserId: a.monzoUserId,
+          isLive:
+            a.encryptedAccessToken !== "demo" &&
+            !a.providerAccountId.startsWith("pending_") &&
+            !a.providerAccountId.startsWith("awaiting_"),
+          isDemo: a.encryptedAccessToken === "demo",
+        })),
       recent,
       pending,
       taxYear,
@@ -51,6 +60,7 @@ export async function GET() {
         demoAccountCount: demoAccounts.length,
         demoTransactionCount: demoTxCount,
         monzoUserCount: new Set(liveAccounts.map((a) => a.monzoUserId).filter(Boolean)).size,
+        awaitingApproval,
       },
     });
   } catch (e) {
