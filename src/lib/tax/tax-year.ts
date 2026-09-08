@@ -34,6 +34,21 @@ export function listTaxYears(count = 5): TaxYear[] {
   return Array.from({ length: count }, (_, i) => buildTaxYear(current.startYear - i));
 }
 
+export function formatTaxYearRange(taxYear: TaxYear): string {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `${fmt(taxYear.start)} – ${fmt(taxYear.end)}`;
+}
+
+/** Options for UI selects, including filing-friendly labels. */
+export function taxYearSelectOptions(count = 6): Array<{ value: string; label: string; range: string }> {
+  return listTaxYears(count).map((y) => ({
+    value: y.label,
+    label: y.label,
+    range: formatTaxYearRange(y),
+  }));
+}
+
 export function parseTaxYearLabel(label: string): TaxYear {
   const startYear = parseInt(label.split("-")[0], 10);
   if (Number.isNaN(startYear)) throw new Error(`Invalid tax year: ${label}`);

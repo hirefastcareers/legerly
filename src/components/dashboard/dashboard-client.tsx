@@ -235,7 +235,12 @@ export function DashboardClient() {
             Tax year {data.taxYear}
           </h1>
           <p className="mt-2 max-w-xl text-stone-600 dark:text-stone-400">
-            Combined Monzo Personal & Business feeds with HMRC SA103 categorisation.
+            Combined Monzo Personal & Business feeds with HMRC SA103 categorisation. Filing last
+            year? Open{" "}
+            <Link href="/tax?taxYear=2025-26" className="font-medium text-teal-800 underline dark:text-teal-300">
+              2025-26 tax summary
+            </Link>{" "}
+            (6 Apr 2025 – 5 Apr 2026).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

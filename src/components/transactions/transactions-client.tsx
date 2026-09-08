@@ -45,6 +45,7 @@ type Tx = {
 type ListResponse = {
   transactions?: Tx[];
   availableYears?: string[];
+  yearOptions?: Array<{ value: string; label: string; range: string }>;
   taxYear?: string;
   counts?: {
     shown: number;
@@ -60,7 +61,9 @@ export function TransactionsClient() {
   const [status, setStatus] = useState("all");
   const [accountType, setAccountType] = useState("all");
   const [taxYear, setTaxYear] = useState("all");
-  const [availableYears, setAvailableYears] = useState<string[]>(["all"]);
+  const [yearOptions, setYearOptions] = useState<
+    Array<{ value: string; label: string; range: string }>
+  >([{ value: "all", label: "All imported", range: "Every transaction stored in Ledgerly" }]);
   const [counts, setCounts] = useState<ListResponse["counts"]>();
   const [q, setQ] = useState("");
   const [pending, startTransition] = useTransition();
@@ -72,7 +75,16 @@ export function TransactionsClient() {
       const params = new URLSearchParams({ status, accountType, q, taxYear });
       const json = await apiJson<ListResponse>(`/api/transactions?${params}`);
       setTransactions(json?.transactions ?? []);
-      if (json?.availableYears?.length) setAvailableYears(json.availableYears);
+      if (json?.yearOptions?.length) setYearOptions(json.yearOptions);
+      else if (json?.availableYears?.length) {
+        setYearOptions(
+          json.availableYears.map((y) => ({
+            value: y,
+            label: y === "all" ? "All imported" : y,
+            range: "",
+          }))
+        );
+      }
       if (json?.counts) setCounts(json.counts);
     });
   }, [status, accountType, q, taxYear]);
@@ -195,9 +207,9 @@ export function TransactionsClient() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {availableYears.map((y) => (
-                  <SelectItem key={y} value={y}>
-                    {y === "all" ? "All imported" : y}
+                {yearOptions.map((y) => (
+                  <SelectItem key={y.value} value={y.value} description={y.range || undefined}>
+                    {y.label}
                   </SelectItem>
                 ))}
               </SelectContent>

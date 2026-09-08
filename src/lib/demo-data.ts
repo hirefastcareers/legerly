@@ -114,7 +114,7 @@ export async function seedDemoTransactions(userId: string) {
         isTaxClaimable: cat.isTaxClaimable,
         aiConfidence: cat.confidence,
         aiExplanation: `[${cat.source}] ${cat.explanation}`,
-        status: cat.confidence >= 0.9 ? "confirmed" : "pending",
+        status: "pending",
         isIncome: demo.amount > 0,
       },
     });

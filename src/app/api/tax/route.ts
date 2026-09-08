@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserId } from "@/lib/session";
 import { buildTaxSummary } from "@/lib/tax/summary";
-import { getTaxYear, listTaxYears } from "@/lib/tax/tax-year";
+import {
+  getTaxYear,
+  listTaxYears,
+  parseTaxYearLabel,
+  formatTaxYearRange,
+  taxYearSelectOptions,
+} from "@/lib/tax/tax-year";
 import { prisma } from "@/lib/db";
 import { wfhFlatRatePence } from "@/lib/tax/calculator";
 
@@ -10,9 +16,12 @@ export async function GET(req: NextRequest) {
     const userId = await requireUserId();
     const taxYear = req.nextUrl.searchParams.get("taxYear") ?? getTaxYear().label;
     const summary = await buildTaxSummary(userId, taxYear);
+    const selected = parseTaxYearLabel(taxYear);
     return NextResponse.json({
       ...summary,
-      availableYears: listTaxYears().map((y) => y.label),
+      availableYears: listTaxYears(6).map((y) => y.label),
+      yearOptions: taxYearSelectOptions(6),
+      dateRange: { label: formatTaxYearRange(selected) },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";

@@ -26,8 +26,10 @@ import { CategoryReferenceList } from "@/components/tax/category-reference";
 import { Download, Car, Home } from "lucide-react";
 
 type Summary = {
-  taxYear: { label: string };
+  taxYear: { label: string; startYear?: number };
   availableYears: string[];
+  yearOptions?: Array<{ value: string; label: string; range: string }>;
+  dateRange?: { label: string };
   pendingReview: number;
   claimableCount: number;
   boxes: Array<{
@@ -69,7 +71,10 @@ export function TaxClient() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Prefer filing year from URL, e.g. /tax?taxYear=2025-26
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("taxYear");
+    load(fromUrl || undefined);
   }, [load]);
 
   async function addMileage() {
@@ -107,8 +112,14 @@ export function TaxClient() {
           </p>
           <h1 className="font-serif text-4xl font-semibold tracking-tight">HMRC boxes & liability</h1>
           <p className="mt-2 text-stone-600 dark:text-stone-400">
-            Estimated Income Tax and Class 4 NI for the selected UK tax year (6 Apr – 5 Apr).
+            Switch tax year to file Self Assessment.{" "}
+            <strong>2025-26</strong> is 6 Apr 2025 – 5 Apr 2026. If those transactions are missing,
+            reconnect Monzo and run <strong>Import full history</strong> first (Monzo only allows a
+            long backfill right after app approval).
           </p>
+          {data.dateRange?.label && (
+            <p className="mt-1 text-sm text-teal-800 dark:text-teal-300">{data.dateRange.label}</p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -116,17 +127,22 @@ export function TaxClient() {
             onValueChange={(v) => {
               setTaxYear(v);
               load(v);
+              const url = new URL(window.location.href);
+              url.searchParams.set("taxYear", v);
+              window.history.replaceState({}, "", url.toString());
             }}
           >
-            <SelectTrigger className="w-36">
-              <SelectValue />
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Tax year" />
             </SelectTrigger>
             <SelectContent>
-              {(data.availableYears ?? []).map((y) => (
-                <SelectItem key={y} value={y}>
-                  {y}
-                </SelectItem>
-              ))}
+              {(data.yearOptions ?? (data.availableYears ?? []).map((y) => ({ value: y, label: y, range: "" }))).map(
+                (y) => (
+                  <SelectItem key={y.value} value={y.value} description={y.range || undefined}>
+                    {y.label}
+                  </SelectItem>
+                )
+              )}
             </SelectContent>
           </Select>
           <Button asChild variant="outline" size="sm">

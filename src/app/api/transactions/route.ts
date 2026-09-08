@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/session";
-import { parseTaxYearLabel, getTaxYear, listTaxYears } from "@/lib/tax/tax-year";
+import {
+  parseTaxYearLabel,
+  getTaxYear,
+  listTaxYears,
+  taxYearSelectOptions,
+} from "@/lib/tax/tax-year";
 
 export async function GET(req: NextRequest) {
   try {
@@ -73,6 +78,10 @@ export async function GET(req: NextRequest) {
       transactions,
       taxYear: taxYearLabel === "all" ? "all" : taxYearLabel,
       availableYears: ["all", ...listTaxYears(6).map((y) => y.label)],
+      yearOptions: [
+        { value: "all", label: "All imported", range: "Every transaction stored in Ledgerly" },
+        ...taxYearSelectOptions(6),
+      ],
       counts: {
         shown: transactions.length,
         totalImported,
