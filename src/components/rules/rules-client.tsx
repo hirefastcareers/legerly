@@ -89,7 +89,7 @@ export function RulesClient() {
         <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <div className="font-medium">Cost of goods (Box 15)</div>
-            <p className="text-stone-500">Plants, compost, turf, bark, fencing, skips, B&amp;Q / Travis Perkins materials used on client jobs</p>
+            <p className="text-stone-500">Plants, compost, turf, bark, fencing, weed killer, fertiliser, skips, B&amp;Q / Travis Perkins materials used on client jobs</p>
           </div>
           <div>
             <div className="font-medium">Travel &amp; vehicle (Box 20/21)</div>
