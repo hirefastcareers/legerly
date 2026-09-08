@@ -19,12 +19,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (body.action === "assign") {
-      await prisma.transactionTag.createMany({
-        data: (body.transactionIds as string[]).flatMap((tid) =>
-          (body.tagIds as string[]).map((tagId) => ({ transactionId: tid, tagId }))
-        ),
-        skipDuplicates: true,
-      });
+      const pairs = (body.transactionIds as string[]).flatMap((tid) =>
+        (body.tagIds as string[]).map((tagId) => ({ transactionId: tid, tagId }))
+      );
+
+      if (pairs.length > 0) {
+        const existing = await prisma.transactionTag.findMany({
+          where: { OR: pairs },
+          select: { transactionId: true, tagId: true },
+        });
+        const existingKeys = new Set(existing.map((row) => `${row.transactionId}:${row.tagId}`));
+        const toCreate = pairs.filter((pair) => !existingKeys.has(`${pair.transactionId}:${pair.tagId}`));
+        if (toCreate.length > 0) {
+          await prisma.transactionTag.createMany({ data: toCreate });
+        }
+      }
+
       return NextResponse.json({ ok: true });
     }
 
