@@ -75,10 +75,43 @@ export function RulesClient() {
         </p>
         <h1 className="font-serif text-4xl font-semibold tracking-tight">Merchant matching</h1>
         <p className="mt-2 max-w-2xl text-stone-600 dark:text-stone-400">
-          System HMRC rules are locked. Add custom merchant rules for your clients and tools.
-          Ambiguous spend still falls through to the AI classifier.
+          System HMRC rules are locked. Built-in gardener rules cover plants, materials, fuel,
+          machinery, insurance and trade directories. Add custom merchants for your local suppliers.
         </p>
       </header>
+
+      <Card className="animate-rise border-teal-200 dark:border-teal-900">
+        <CardHeader>
+          <CardTitle className="text-base">Self-employed gardener cheat sheet</CardTitle>
+          <CardDescription>How common garden-care spend maps to SA103 boxes</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <div className="font-medium">Cost of goods (Box 15)</div>
+            <p className="text-stone-500">Plants, compost, turf, bark, fencing, skips, B&amp;Q / Travis Perkins materials used on client jobs</p>
+          </div>
+          <div>
+            <div className="font-medium">Travel &amp; vehicle (Box 20/21)</div>
+            <p className="text-stone-500">Fuel, parking, van hire, commercial van insurance, MOT — or log mileage at 45p</p>
+          </div>
+          <div>
+            <div className="font-medium">Capital allowances (AIA)</div>
+            <p className="text-stone-500">Mowers, strimmers, Stihl/Husqvarna kit, trailers, major power tools</p>
+          </div>
+          <div>
+            <div className="font-medium">Maintenance</div>
+            <p className="text-stone-500">Blade sharpening, tool repairs, servicing existing equipment</p>
+          </div>
+          <div>
+            <div className="font-medium">Advertising</div>
+            <p className="text-stone-500">Checkatrade, Rated People, MyBuilder, Bark, leaflets, Vistaprint</p>
+          </div>
+          <div>
+            <div className="font-medium">Professional fees</div>
+            <p className="text-stone-500">Public liability insurance, Simply Business, accountancy</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="animate-rise-delay-1 grid gap-6 lg:grid-cols-3">
         <Card>
