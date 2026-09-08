@@ -129,7 +129,7 @@ export async function upsertMonzoTransaction(
       isTaxClaimable: cat.isTaxClaimable && !pot,
       aiConfidence: cat.confidence,
       aiExplanation: `[${cat.source}] ${cat.explanation}`,
-      status: cat.source === "rule" && cat.confidence >= 1 ? "confirmed" : "pending",
+      status: "pending", // always needs user review — never auto-confirm
       isIncome: tx.amount > 0 && cat.hmrcCategory === "income",
     },
   });

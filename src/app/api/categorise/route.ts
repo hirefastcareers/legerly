@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
           isExcluded: Boolean(cat.isExcluded),
           isPotTransfer: Boolean(cat.isExcluded),
           isIncome: cat.hmrcCategory === "income" || tx.amount > 0,
-          status: cat.confidence >= 0.9 ? "confirmed" : "pending",
+          status: "pending",
         },
       });
       results.push(updated);
