@@ -113,7 +113,8 @@ export async function categoriseTransaction(input: {
   const ruleHit = await applyRulesEngine(input.description, input.merchantName);
   if (ruleHit) return ruleHit;
 
-  if (input.useAi !== false && process.env.OPENAI_API_KEY) {
+  const { isAiEnabled } = await import("@/lib/config");
+  if (input.useAi === true && isAiEnabled()) {
     try {
       const { aiCategorise } = await import("@/lib/ai/categorise");
       return await aiCategorise(input);

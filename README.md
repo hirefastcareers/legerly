@@ -29,9 +29,29 @@ Open [http://localhost:3000](http://localhost:3000). Sign in on `/login`, then *
 4. Connect Personal and Business from the dashboard (separate OAuth flows).
 5. Register webhook URL `https://your-domain/api/webhooks/monzo` for live sync.
 
-### OpenAI (optional)
+### Low-cost production (recommended)
 
-Set `OPENAI_API_KEY` for AI categorisation of ambiguous merchants and receipt OCR.
+Keep monthly cost near £0 on free tiers:
+
+- **Vercel Hobby** — hosts the app
+- **Neon free Postgres** — database
+- **Monzo API** — free
+- **No OpenAI** — leave `ENABLE_AI=false` (default). Rules + manual review are enough
+
+```bash
+DEMO_MODE="false"
+ENABLE_AI="false"
+# OPENAI_API_KEY not required
+```
+
+### OpenAI (optional / costs money)
+
+Only if you want LLM categorisation / OCR:
+
+```bash
+ENABLE_AI="true"
+OPENAI_API_KEY="sk-..."
+```
 
 ### Encryption key
 

@@ -112,12 +112,12 @@ export function TransactionsClient() {
     setSelected(new Set());
   }
 
-  async function runAi() {
+  async function runRules() {
     const ids = selected.size ? Array.from(selected) : [];
     await fetch("/api/categorise", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids, useAi: true }),
+      body: JSON.stringify({ ids, useAi: false }),
     });
     load();
   }
@@ -181,9 +181,9 @@ export function TransactionsClient() {
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={runAi}>
+          <Button variant="outline" onClick={runRules}>
             <Sparkles className="h-4 w-4" />
-            Re-run AI / rules
+            Re-run rules
           </Button>
         </CardContent>
       </Card>

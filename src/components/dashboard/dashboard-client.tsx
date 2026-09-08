@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import {
   Building2,
   PiggyBank,
   RefreshCw,
+  Trash2,
   User,
   Wallet,
 } from "lucide-react";
@@ -20,7 +22,12 @@ import {
 type DashboardData = {
   taxYear: string;
   pending: number;
-  accounts: Array<{ id: string; accountType: string; accountName: string | null }>;
+  accounts: Array<{
+    id: string;
+    accountType: string;
+    accountName: string | null;
+    encryptedAccessToken?: string;
+  }>;
   recent: Array<{
     id: string;
     description: string;
@@ -43,13 +50,24 @@ type DashboardData = {
     };
     pendingReview: number;
   };
+  status?: {
+    monzoConfigured: boolean;
+    demoMode: boolean;
+    aiEnabled: boolean;
+    liveAccountCount: number;
+    demoAccountCount: number;
+    demoTransactionCount: number;
+  };
 };
 
 export function DashboardClient() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<DashboardData | null>(null);
   const [pending, startTransition] = useTransition();
   const [syncing, setSyncing] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     startTransition(async () => {
@@ -62,16 +80,58 @@ export function DashboardClient() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err === "monzo_not_configured") {
+      setError(
+        "Monzo credentials are missing on Vercel. Add MONZO_CLIENT_ID and MONZO_CLIENT_SECRET, then reconnect."
+      );
+    } else if (err === "oauth_failed") {
+      setError("Monzo login failed. Check redirect URI matches exactly, then try Connect again.");
+    } else if (searchParams.get("connected")) {
+      setMessage(
+        `Monzo ${searchParams.get("connected")} connected. Approve access in the Monzo app if prompted, then click Sync from Monzo.`
+      );
+    }
+  }, [searchParams]);
+
   async function sync() {
     setSyncing(true);
     setMessage(null);
+    setError(null);
     const res = await fetch("/api/monzo/sync", { method: "POST" });
     const json = await res.json();
     setSyncing(false);
+    if (!res.ok || json.ok === false) {
+      setError(json.error || json.hint || "Sync failed");
+      return;
+    }
+    if (json.demo) {
+      setMessage(`Loaded ${json.imported} demo transactions (DEMO_MODE is on)`);
+    } else {
+      const imported = (json.results ?? []).reduce(
+        (sum: number, r: { imported?: number }) => sum + (r.imported ?? 0),
+        0
+      );
+      const errs = (json.results ?? []).filter((r: { error?: string }) => r.error);
+      setMessage(
+        errs.length
+          ? `Sync finished with errors. ${json.hint ?? ""}`
+          : `Synced from Monzo — ${imported} new transactions.`
+      );
+      if (errs.length) setError(errs.map((e: { error: string }) => e.error).join(" · "));
+    }
+    load();
+  }
+
+  async function clearDemo() {
+    setClearing(true);
+    setError(null);
+    const res = await fetch("/api/monzo/clear-demo", { method: "POST" });
+    const json = await res.json();
+    setClearing(false);
     setMessage(
-      json.demo
-        ? `Loaded ${json.imported} demo transactions`
-        : `Synced accounts (${JSON.stringify(json.results?.length ?? 0)} accounts)`
+      `Removed ${json.deletedTransactions ?? 0} demo transactions and ${json.deletedAccounts ?? 0} demo accounts.`
     );
     load();
   }
@@ -81,8 +141,15 @@ export function DashboardClient() {
   }
 
   const est = data.summary.estimate;
-  const hasPersonal = data.accounts.some((a) => a.accountType === "personal");
-  const hasBusiness = data.accounts.some((a) => a.accountType === "business");
+  const status = data.status;
+  const hasLivePersonal = data.accounts.some(
+    (a) => a.accountType === "personal" && a.encryptedAccessToken !== "demo"
+  );
+  const hasLiveBusiness = data.accounts.some(
+    (a) => a.accountType === "business" && a.encryptedAccessToken !== "demo"
+  );
+  const hasDemoData =
+    (status?.demoAccountCount ?? 0) > 0 || (status?.demoTransactionCount ?? 0) > 0;
 
   return (
     <div className="space-y-8">
@@ -99,15 +166,47 @@ export function DashboardClient() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {hasDemoData && (
+            <Button variant="outline" onClick={clearDemo} disabled={clearing}>
+              <Trash2 className="h-4 w-4" />
+              {clearing ? "Clearing…" : "Clear demo data"}
+            </Button>
+          )}
           <Button variant="outline" onClick={sync} disabled={syncing || pending}>
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync / seed demo"}
+            {syncing ? "Syncing…" : "Sync from Monzo"}
           </Button>
           <Button asChild variant="secondary">
             <Link href="/transactions">Review queue ({data.pending})</Link>
           </Button>
         </div>
       </header>
+
+      {status && (
+        <div className="animate-rise flex flex-wrap gap-2 text-xs">
+          <Badge variant={status.monzoConfigured ? "success" : "warning"}>
+            Monzo API {status.monzoConfigured ? "configured" : "not configured"}
+          </Badge>
+          <Badge variant={status.liveAccountCount > 0 ? "success" : "outline"}>
+            {status.liveAccountCount} live account{status.liveAccountCount === 1 ? "" : "s"}
+          </Badge>
+          {hasDemoData && (
+            <Badge variant="warning">
+              {status.demoTransactionCount} demo transactions still loaded
+            </Badge>
+          )}
+          <Badge variant={status.aiEnabled ? "default" : "secondary"}>
+            AI {status.aiEnabled ? "on" : "off (free)"}
+          </Badge>
+          {status.demoMode && <Badge variant="warning">DEMO_MODE=true</Badge>}
+        </div>
+      )}
+
+      {error && (
+        <div className="animate-rise rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          {error}
+        </div>
+      )}
 
       {message && (
         <div className="animate-rise rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950 dark:text-teal-100">
@@ -136,19 +235,20 @@ export function DashboardClient() {
           <CardHeader>
             <CardTitle>Monzo connections</CardTitle>
             <CardDescription>
-              Connect both Personal and Business accounts. Tokens are encrypted with AES-256-GCM.
+              Connect real accounts (approve the login in the Monzo app). Tokens are encrypted;
+              sync uses free rules — no OpenAI required.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <ConnectCard
               title="Personal"
-              connected={hasPersonal}
+              connected={hasLivePersonal}
               href="/api/monzo/connect?type=personal"
               icon={<User className="h-5 w-5" />}
             />
             <ConnectCard
               title="Business"
-              connected={hasBusiness}
+              connected={hasLiveBusiness}
               href="/api/monzo/connect?type=business"
               icon={<Building2 className="h-5 w-5" />}
             />
@@ -194,7 +294,7 @@ export function DashboardClient() {
           <ul className="divide-y divide-stone-200 dark:divide-stone-800">
             {data.recent.length === 0 && (
               <li className="py-8 text-center text-sm text-stone-500">
-                No transactions yet. Click &ldquo;Sync / seed demo&rdquo; to load sample data.
+                No live transactions yet. Connect Monzo, approve in the app, then Sync from Monzo.
               </li>
             )}
             {data.recent.map((tx) => (

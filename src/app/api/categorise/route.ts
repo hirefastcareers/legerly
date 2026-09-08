@@ -2,20 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/session";
 import { categoriseTransaction } from "@/lib/tax/rules-engine";
+import { isAiEnabled } from "@/lib/config";
 
 export async function POST(req: NextRequest) {
   try {
     const userId = await requireUserId();
     const body = await req.json();
     const ids: string[] = body.ids ?? [];
-    const useAi = body.useAi !== false;
+    // Default off — only use OpenAI when ENABLE_AI=true and caller asks for it
+    const useAi = body.useAi === true && isAiEnabled();
 
     const transactions = await prisma.transaction.findMany({
       where: {
         userId,
         ...(ids.length ? { id: { in: ids } } : { status: "pending" }),
       },
-      take: 50,
+      take: useAi ? 20 : 100,
     });
 
     const results = [];
@@ -45,7 +47,11 @@ export async function POST(req: NextRequest) {
       results.push(updated);
     }
 
-    return NextResponse.json({ categorised: results.length, results });
+    return NextResponse.json({
+      categorised: results.length,
+      usedAi: useAi,
+      results,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     return NextResponse.json({ error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });

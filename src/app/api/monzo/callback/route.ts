@@ -93,6 +93,26 @@ export async function GET(req: NextRequest) {
 
     await prisma.oAuthState.delete({ where: { id: oauthState.id } }).catch(() => undefined);
 
+    // Drop any previously seeded demo accounts/transactions for this user
+    const demoAccounts = await prisma.account.findMany({
+      where: {
+        userId,
+        OR: [{ encryptedAccessToken: "demo" }, { providerAccountId: { startsWith: "demo_" } }],
+      },
+      select: { id: true },
+    });
+    if (demoAccounts.length) {
+      await prisma.transaction.deleteMany({
+        where: { userId, accountId: { in: demoAccounts.map((a) => a.id) } },
+      });
+      await prisma.account.deleteMany({
+        where: { id: { in: demoAccounts.map((a) => a.id) } },
+      });
+    }
+    await prisma.transaction.deleteMany({
+      where: { userId, monzoTransactionId: { startsWith: "demo_" } },
+    });
+
     // Initial sync (non-blocking best-effort)
     syncAccountTransactions(saved.id, userId).catch(console.error);
 

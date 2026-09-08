@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getMonzoAuthUrl } from "@/lib/monzo/client";
 import { requireUserId } from "@/lib/session";
+import { hasMonzoCredentials, isDemoMode } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,8 +12,14 @@ export async function GET(req: NextRequest) {
       | "personal"
       | "business";
 
-    // Demo mode when Monzo credentials are not configured
-    if (!process.env.MONZO_CLIENT_ID) {
+    // Only create fake accounts when demo mode is explicitly on AND Monzo isn't configured
+    if (!hasMonzoCredentials()) {
+      if (!isDemoMode()) {
+        return NextResponse.redirect(
+          new URL("/dashboard?error=monzo_not_configured", req.url)
+        );
+      }
+
       await prisma.account.upsert({
         where: {
           provider_providerAccountId: {
@@ -38,7 +45,7 @@ export async function GET(req: NextRequest) {
           tokenExpiresAt: new Date(Date.now() + 86400000 * 365),
         },
       });
-      return NextResponse.redirect(new URL(`/dashboard?connected=${accountType}`, req.url));
+      return NextResponse.redirect(new URL(`/dashboard?connected=${accountType}&demo=1`, req.url));
     }
 
     const state = randomBytes(16).toString("hex");

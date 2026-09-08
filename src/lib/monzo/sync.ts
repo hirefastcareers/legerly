@@ -70,6 +70,7 @@ export async function upsertMonzoTransaction(
         merchantName,
         amount: tx.amount,
         monzoCategory: tx.category,
+        useAi: false, // keep sync free — AI only via explicit /api/categorise
       });
 
   await prisma.transaction.create({
