@@ -113,8 +113,8 @@ export async function GET(req: NextRequest) {
       where: { userId, monzoTransactionId: { startsWith: "demo_" } },
     });
 
-    // Initial sync (non-blocking best-effort)
-    syncAccountTransactions(saved.id, userId).catch(console.error);
+    // Initial sync right after SCA — try longer history, fall back to 90 days
+    await syncAccountTransactions(saved.id, userId, { fullHistory: true }).catch(console.error);
 
     return NextResponse.redirect(
       new URL(`/dashboard?connected=${saved.accountType}`, req.url)

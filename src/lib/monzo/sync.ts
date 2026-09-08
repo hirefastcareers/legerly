@@ -3,6 +3,8 @@ import {
   fetchAllTransactions,
   isPotTransfer,
   listMonzoAccounts,
+  MonzoApiError,
+  pingMonzo,
   type MonzoTransaction,
 } from "@/lib/monzo/client";
 import { categoriseTransaction } from "@/lib/tax/rules-engine";
@@ -10,19 +12,52 @@ import { categoriseTransaction } from "@/lib/tax/rules-engine";
 export async function syncAccountTransactions(
   dbAccountId: string,
   userId: string,
-  options?: { since?: string }
-): Promise<{ imported: number; skipped: number; categorised: number }> {
+  options?: { since?: string; fullHistory?: boolean }
+): Promise<{ imported: number; skipped: number; categorised: number; accountName?: string }> {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: dbAccountId } });
+
+  // Cheap auth check first so errors are clearer
+  try {
+    await pingMonzo(dbAccountId);
+  } catch (err) {
+    if (err instanceof MonzoApiError) {
+      throw new Error(`${err.message} — ${err.userHint}`);
+    }
+    throw err;
+  }
+
   const monzoAccounts = await listMonzoAccounts(dbAccountId);
   const matching =
-    monzoAccounts.find((a) => a.id === account.providerAccountId) ?? monzoAccounts[0];
+    monzoAccounts.find((a) => a.id === account.providerAccountId) ??
+    monzoAccounts.find((a) => {
+      const t = (a.type ?? "").toLowerCase();
+      return account.accountType === "business"
+        ? t.includes("business")
+        : !t.includes("business");
+    }) ??
+    monzoAccounts[0];
 
   if (!matching) {
-    return { imported: 0, skipped: 0, categorised: 0 };
+    throw new Error(
+      "Monzo returned no open accounts for this token. Reconnect using the Monzo login for that Personal or Business profile."
+    );
+  }
+
+  // Keep stored account id in sync if Monzo replaced/pending id
+  if (matching.id !== account.providerAccountId) {
+    await prisma.account.update({
+      where: { id: dbAccountId },
+      data: {
+        providerAccountId: matching.id,
+        accountName: matching.description,
+        description: matching.description,
+      },
+    });
   }
 
   const txs = await fetchAllTransactions(dbAccountId, matching.id, {
     since: options?.since,
+    fullHistory: options?.fullHistory,
   });
 
   let imported = 0;
@@ -38,7 +73,12 @@ export async function syncAccountTransactions(
     }
   }
 
-  return { imported, skipped, categorised };
+  return {
+    imported,
+    skipped,
+    categorised,
+    accountName: matching.description,
+  };
 }
 
 export async function upsertMonzoTransaction(
@@ -70,7 +110,7 @@ export async function upsertMonzoTransaction(
         merchantName,
         amount: tx.amount,
         monzoCategory: tx.category,
-        useAi: false, // keep sync free — AI only via explicit /api/categorise
+        useAi: false,
       });
 
   await prisma.transaction.create({

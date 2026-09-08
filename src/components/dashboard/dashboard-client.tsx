@@ -104,6 +104,7 @@ export function DashboardClient() {
     setSyncing(false);
     if (!res.ok || json.ok === false) {
       setError(json.error || json.hint || "Sync failed");
+      if (json.hint && json.error) setMessage(json.hint);
       return;
     }
     if (json.demo) {
@@ -116,10 +117,18 @@ export function DashboardClient() {
       const errs = (json.results ?? []).filter((r: { error?: string }) => r.error);
       setMessage(
         errs.length
-          ? `Sync finished with errors. ${json.hint ?? ""}`
-          : `Synced from Monzo — ${imported} new transactions.`
+          ? json.hint || "Sync finished with errors — see details below."
+          : `Synced from Monzo — ${imported} new transactions (last 90 days).`
       );
-      if (errs.length) setError(errs.map((e: { error: string }) => e.error).join(" · "));
+      if (errs.length) {
+        setError(
+          errs
+            .map((e: { accountType?: string; error: string; hint?: string }) =>
+              `${e.accountType ?? "account"}: ${e.error}`
+            )
+            .join(" · ")
+        );
+      }
     }
     load();
   }

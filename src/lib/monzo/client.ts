@@ -4,12 +4,16 @@ import { prisma } from "@/lib/db";
 const MONZO_API = "https://api.monzo.com";
 const MONZO_AUTH = "https://auth.monzo.com";
 
+/** After SCA cools down, Monzo only allows ~90 days of transaction history. */
+export const MONZO_SAFE_HISTORY_DAYS = 90;
+
 export type MonzoAccount = {
   id: string;
   description: string;
   created: string;
   type?: string;
   currency?: string;
+  closed?: boolean;
   owner?: { preferred_name?: string };
 };
 
@@ -30,9 +34,57 @@ export type MonzoTransaction = {
   attachments?: Array<{ id: string; file_url?: string; file_type?: string }>;
 };
 
+export class MonzoApiError extends Error {
+  status: number;
+  path: string;
+  body: string;
+  code?: string;
+
+  constructor(status: number, path: string, body: string) {
+    let code: string | undefined;
+    let message = `Monzo API ${path} failed: ${status}`;
+    try {
+      const parsed = JSON.parse(body) as { code?: string; message?: string; error?: string };
+      code = parsed.code ?? parsed.error;
+      if (parsed.message) message = `Monzo: ${parsed.message}`;
+      else if (code) message = `Monzo: ${code}`;
+    } catch {
+      if (body) message = `Monzo API ${path} failed: ${status} ${body.slice(0, 200)}`;
+    }
+    super(message);
+    this.name = "MonzoApiError";
+    this.status = status;
+    this.path = path;
+    this.body = body;
+    this.code = code;
+  }
+
+  get needsReauth(): boolean {
+    return (
+      this.status === 401 ||
+      this.status === 403 ||
+      this.code === "forbidden.verification_required" ||
+      /verification required/i.test(this.message)
+    );
+  }
+
+  get userHint(): string {
+    if (this.code === "forbidden.verification_required" || /verification required/i.test(this.message)) {
+      return "Monzo blocked a long history request. We now sync the last 90 days only — reconnect in the Monzo app (Profile → Settings → Manage apps), then Sync again.";
+    }
+    if (this.status === 403) {
+      return "Open the Monzo app → approve this client (push notification), or Profile → Settings → Manage apps → refresh access, then reconnect and sync within a few minutes.";
+    }
+    if (this.status === 401) {
+      return "Monzo access token expired or invalid. Click Connect again and approve in the Monzo app.";
+    }
+    return this.message;
+  }
+}
+
 function clientCredentials() {
-  const clientId = process.env.MONZO_CLIENT_ID;
-  const clientSecret = process.env.MONZO_CLIENT_SECRET;
+  const clientId = process.env.MONZO_CLIENT_ID?.trim();
+  const clientSecret = process.env.MONZO_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
     throw new Error("MONZO_CLIENT_ID and MONZO_CLIENT_SECRET must be set");
   }
@@ -41,7 +93,7 @@ function clientCredentials() {
 
 export function getMonzoAuthUrl(state: string, accountType: "personal" | "business"): string {
   const { clientId } = clientCredentials();
-  const redirectUri = process.env.MONZO_REDIRECT_URI!;
+  const redirectUri = process.env.MONZO_REDIRECT_URI!.trim();
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,7 +110,7 @@ export async function exchangeMonzoCode(code: string): Promise<{
   user_id: string;
 }> {
   const { clientId, clientSecret } = clientCredentials();
-  const redirectUri = process.env.MONZO_REDIRECT_URI!;
+  const redirectUri = process.env.MONZO_REDIRECT_URI!.trim();
 
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -101,33 +153,55 @@ export async function refreshMonzoToken(refreshToken: string): Promise<{
   });
 
   if (!res.ok) {
-    throw new Error(`Monzo refresh failed: ${res.status}`);
+    const text = await res.text();
+    throw new MonzoApiError(res.status, "/oauth2/token", text);
   }
   return res.json();
 }
 
 async function getValidAccessToken(accountId: string): Promise<string> {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
-  const accessToken = decryptToken(account.encryptedAccessToken);
 
-  if (account.tokenExpiresAt && account.tokenExpiresAt.getTime() > Date.now() + 60_000) {
+  if (account.encryptedAccessToken === "demo") {
+    throw new Error("Demo account cannot call Monzo API");
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(account.encryptedAccessToken);
+  } catch {
+    throw new Error(
+      "Could not decrypt Monzo token. If you rotated TOKEN_ENCRYPTION_KEY, reconnect Monzo."
+    );
+  }
+
+  const stillValid =
+    account.tokenExpiresAt && account.tokenExpiresAt.getTime() > Date.now() + 60_000;
+
+  if (stillValid) return accessToken;
+
+  if (!account.encryptedRefreshToken || account.encryptedRefreshToken === "demo") {
     return accessToken;
   }
 
-  if (!account.encryptedRefreshToken) return accessToken;
-
-  const refreshed = await refreshMonzoToken(decryptToken(account.encryptedRefreshToken));
-  await prisma.account.update({
-    where: { id: accountId },
-    data: {
-      encryptedAccessToken: encryptToken(refreshed.access_token),
-      encryptedRefreshToken: refreshed.refresh_token
-        ? encryptToken(refreshed.refresh_token)
-        : account.encryptedRefreshToken,
-      tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-    },
-  });
-  return refreshed.access_token;
+  try {
+    const refreshed = await refreshMonzoToken(decryptToken(account.encryptedRefreshToken));
+    await prisma.account.update({
+      where: { id: accountId },
+      data: {
+        encryptedAccessToken: encryptToken(refreshed.access_token),
+        encryptedRefreshToken: refreshed.refresh_token
+          ? encryptToken(refreshed.refresh_token)
+          : account.encryptedRefreshToken,
+        tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+      },
+    });
+    return refreshed.access_token;
+  } catch (err) {
+    // Fall back to existing token — may still work briefly
+    if (err instanceof MonzoApiError) throw err;
+    return accessToken;
+  }
 }
 
 export async function monzoFetch<T>(
@@ -145,14 +219,14 @@ export async function monzoFetch<T>(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Monzo API ${path} failed: ${res.status} ${text}`);
+    throw new MonzoApiError(res.status, path.split("?")[0], text);
   }
   return res.json() as Promise<T>;
 }
 
 export async function listMonzoAccounts(accountId: string): Promise<MonzoAccount[]> {
   const data = await monzoFetch<{ accounts: MonzoAccount[] }>(accountId, "/accounts");
-  return data.accounts;
+  return (data.accounts ?? []).filter((a) => !a.closed);
 }
 
 export function inferAccountType(account: MonzoAccount): "personal" | "business" {
@@ -171,53 +245,67 @@ export function isPotTransfer(tx: MonzoTransaction): boolean {
   return false;
 }
 
-/** Paginated transaction fetch using since / before */
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** Paginated transaction fetch — defaults to last 90 days (Monzo SCA limit). */
 export async function fetchAllTransactions(
   accountId: string,
   monzoAccountId: string,
-  options?: { since?: string; before?: string }
+  options?: { since?: string; before?: string; fullHistory?: boolean }
 ): Promise<MonzoTransaction[]> {
   const results: MonzoTransaction[] = [];
   let before = options?.before;
-  const since = options?.since ?? new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+  // fullHistory only works in the ~5 minute window after SCA approval
+  const since =
+    options?.since ??
+    daysAgoIso(options?.fullHistory ? 365 * 3 : MONZO_SAFE_HISTORY_DAYS);
 
-  // Monzo returns newest first; paginate with `before`
   for (let i = 0; i < 50; i++) {
     const params = new URLSearchParams({
       account_id: monzoAccountId,
       limit: "100",
       since,
-      "expand[]": "merchant",
     });
+    params.append("expand[]", "merchant");
     if (before) params.set("before", before);
 
-    const data = await monzoFetch<{ transactions: MonzoTransaction[] }>(
-      accountId,
-      `/transactions?${params.toString()}`
-    );
+    try {
+      const data = await monzoFetch<{ transactions: MonzoTransaction[] }>(
+        accountId,
+        `/transactions?${params.toString()}`
+      );
 
-    const batch = data.transactions ?? [];
-    if (batch.length === 0) break;
-    results.push(...batch);
-    before = batch[batch.length - 1].created;
-    if (batch.length < 100) break;
+      const batch = data.transactions ?? [];
+      if (batch.length === 0) break;
+      results.push(...batch);
+      before = batch[batch.length - 1].created;
+      if (batch.length < 100) break;
+    } catch (err) {
+      // If long history is forbidden, retry once with 90-day window
+      if (
+        err instanceof MonzoApiError &&
+        err.needsReauth &&
+        options?.fullHistory &&
+        !options.since
+      ) {
+        return fetchAllTransactions(accountId, monzoAccountId, {
+          before: options.before,
+          fullHistory: false,
+        });
+      }
+      throw err;
+    }
   }
 
   return results;
 }
 
-export async function registerWebhook(
-  accountId: string,
-  monzoAccountId: string,
-  url: string
-): Promise<void> {
-  const token = await getValidAccessToken(accountId);
-  await fetch(`${MONZO_API}/webhooks`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({ account_id: monzoAccountId, url }),
-  });
+export async function pingMonzo(accountId: string): Promise<{ authenticated: boolean; userId?: string }> {
+  const data = await monzoFetch<{ authenticated: boolean; client?: { user_id?: string } }>(
+    accountId,
+    "/ping/whoami"
+  );
+  return { authenticated: data.authenticated, userId: data.client?.user_id };
 }
