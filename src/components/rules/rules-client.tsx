@@ -137,15 +137,14 @@ export function RulesClient() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="w-96">
                     {HMRC_CATEGORY_LIST.map((c) => (
-                      <SelectItem key={c.key} value={c.key} textValue={c.label}>
-                        <div className="flex flex-col gap-0.5 py-0.5">
-                          <span>{c.label}</span>
-                          <span className="max-w-xs text-xs font-normal text-stone-500">
-                            {c.sa103Box} · {c.description}
-                          </span>
-                        </div>
+                      <SelectItem
+                        key={c.key}
+                        value={c.key}
+                        description={`${c.sa103Box} · ${c.description}`}
+                      >
+                        {c.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

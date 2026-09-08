@@ -198,18 +198,13 @@ export function TransactionsClient() {
             Mark tax claimable
           </Button>
           <Select onValueChange={bulkCategory}>
-            <SelectTrigger className="h-8 w-48">
+            <SelectTrigger className="h-8 w-52">
               <SelectValue placeholder="Set HMRC category" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="w-72">
               {HMRC_CATEGORY_LIST.map((c) => (
-                <SelectItem key={c.key} value={c.key} textValue={c.label}>
-                  <div className="flex flex-col gap-0.5 py-0.5">
-                    <span>{c.label}</span>
-                    <span className="max-w-[14rem] truncate text-xs font-normal text-stone-500">
-                      {c.description}
-                    </span>
-                  </div>
+                <SelectItem key={c.key} value={c.key} description={c.description}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -267,7 +262,7 @@ export function TransactionsClient() {
                   <td className={`px-4 py-3 font-medium ${tx.amount > 0 ? "text-emerald-700" : ""}`}>
                     {formatGBP(tx.amount)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="w-48 max-w-[12rem] px-4 py-3">
                     <Select
                       value={tx.hmrcCategory ?? "non_deductible"}
                       onValueChange={(v) =>
@@ -278,18 +273,13 @@ export function TransactionsClient() {
                         })
                       }
                     >
-                      <SelectTrigger className="h-8 w-44">
-                        <SelectValue />
+                      <SelectTrigger className="h-9 w-full min-w-0" title={HMRC_CATEGORY_LIST.find((c) => c.key === (tx.hmrcCategory ?? "non_deductible"))?.description}>
+                        <SelectValue placeholder="Category" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-80">
                         {HMRC_CATEGORY_LIST.map((c) => (
-                          <SelectItem key={c.key} value={c.key} textValue={c.label}>
-                            <div className="flex flex-col gap-0.5 py-0.5">
-                              <span>{c.label}</span>
-                              <span className="max-w-[14rem] truncate text-xs font-normal text-stone-500">
-                                {c.description}
-                              </span>
-                            </div>
+                          <SelectItem key={c.key} value={c.key} description={c.description}>
+                            {c.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
