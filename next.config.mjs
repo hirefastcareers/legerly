@@ -10,6 +10,7 @@ process.env.NEXTAUTH_URL = nextAuthUrl;
 const nextConfig = {
   env: {
     NEXTAUTH_URL: nextAuthUrl,
+    DEMO_MODE: process.env.DEMO_MODE ?? "",
   },
 };
 

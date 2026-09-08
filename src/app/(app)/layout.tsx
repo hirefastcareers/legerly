@@ -1,6 +1,15 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
+import { authOptions } from "@/lib/auth";
+import { isDemoMode } from "@/lib/session";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user && !isDemoMode()) {
+    redirect("/login");
+  }
+
   return (
     <div className="flex min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-teal-50 via-stone-50 to-amber-50 dark:from-stone-950 dark:via-stone-950 dark:to-teal-950">
       <Sidebar />

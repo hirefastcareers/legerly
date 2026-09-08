@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { HMRC_CATEGORY_LIST } from "@/lib/tax/hmrc-categories";
 import { formatGBP } from "@/lib/utils";
+import { apiJson } from "@/lib/api-client";
 import { Check, Sparkles, Split } from "lucide-react";
 
 type Tx = {
@@ -54,9 +55,8 @@ export function TransactionsClient() {
   const load = useCallback(() => {
     startTransition(async () => {
       const params = new URLSearchParams({ status, accountType, q });
-      const res = await fetch(`/api/transactions?${params}`);
-      const json = await res.json();
-      setTransactions(json.transactions ?? []);
+      const json = await apiJson<{ transactions?: Tx[] }>(`/api/transactions?${params}`);
+      setTransactions(json?.transactions ?? []);
     });
   }, [status, accountType, q]);
 

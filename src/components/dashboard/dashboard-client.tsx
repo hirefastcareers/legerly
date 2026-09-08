@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatGBP } from "@/lib/utils";
+import { apiJson } from "@/lib/api-client";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -52,9 +53,8 @@ export function DashboardClient() {
 
   const load = useCallback(() => {
     startTransition(async () => {
-      const res = await fetch("/api/dashboard");
-      const json = await res.json();
-      setData(json);
+      const json = await apiJson<DashboardData>("/api/dashboard");
+      if (json?.summary?.estimate) setData(json);
     });
   }, []);
 
@@ -76,7 +76,7 @@ export function DashboardClient() {
     load();
   }
 
-  if (!data) {
+  if (!data?.summary?.estimate) {
     return <div className="animate-pulse text-stone-500">Loading workspace…</div>;
   }
 

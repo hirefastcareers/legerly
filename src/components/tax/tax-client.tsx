@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatGBP } from "@/lib/utils";
+import { apiJson } from "@/lib/api-client";
 import { Download, Car, Home } from "lucide-react";
 
 type Summary = {
@@ -59,8 +60,8 @@ export function TaxClient() {
 
   const load = useCallback(async (year?: string) => {
     const params = year ? `?taxYear=${year}` : "";
-    const res = await fetch(`/api/tax${params}`);
-    const json = await res.json();
+    const json = await apiJson<Summary>(`/api/tax${params}`);
+    if (!json?.estimate) return;
     setData(json);
     setTaxYear(json.taxYear?.label ?? year ?? "");
   }, []);
@@ -92,7 +93,7 @@ export function TaxClient() {
     load(taxYear);
   }
 
-  if (!data) return <div className="text-stone-500">Loading tax position…</div>;
+  if (!data?.estimate) return <div className="text-stone-500">Loading tax position…</div>;
   const e = data.estimate;
 
   return (
