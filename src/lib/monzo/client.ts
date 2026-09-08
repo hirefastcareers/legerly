@@ -244,7 +244,19 @@ export async function monzoFetch<T>(
 
 export async function listMonzoAccounts(accountId: string): Promise<MonzoAccount[]> {
   const data = await monzoFetch<{ accounts: MonzoAccount[] }>(accountId, "/accounts");
-  return (data.accounts ?? []).filter((a) => !a.closed);
+  return (data.accounts ?? []).filter((a) => {
+    if (a.closed) return false;
+    const type = (a.type ?? "").toLowerCase();
+    const id = a.id.toLowerCase();
+    // Skip non-bank feeds Monzo sometimes returns (rewards, flex, user stubs)
+    if (id.startsWith("user_") || id.startsWith("rewards") || id.startsWith("monzoflex")) {
+      return false;
+    }
+    if (type.includes("reward") || type.includes("loan") || type.includes("flex")) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function inferAccountType(account: MonzoAccount): "personal" | "business" {

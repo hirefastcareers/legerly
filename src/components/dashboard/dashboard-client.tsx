@@ -362,17 +362,24 @@ export function DashboardClient() {
                   {hasAnyLive ? "Reconnect Monzo" : "Connect Monzo"}
                 </a>
               </Button>
-              {(showAwaiting || status?.awaitingApproval) && (
-                <Button onClick={importHistory} disabled={importing} variant="secondary">
-                  {importing ? "Importing…" : "Import full history"}
-                </Button>
-              )}
+              <Button
+                onClick={importHistory}
+                disabled={importing || (!hasAnyLive && !showAwaiting && !status?.awaitingApproval)}
+                variant="secondary"
+              >
+                <RefreshCw className={`h-4 w-4 ${importing ? "animate-spin" : ""}`} />
+                {importing ? "Importing…" : "Import full history"}
+              </Button>
               {hasAnyLive && (
                 <Button asChild variant="outline">
                   <a href="/api/monzo/connect?type=business">Connect another Monzo login</a>
                 </Button>
               )}
             </div>
+            <p className="text-xs text-stone-500">
+              Use <strong>Import full history</strong> after approving in the Monzo app (tax year
+              data). Use <strong>Sync from Monzo</strong> afterwards for new transactions only.
+            </p>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-stone-200 p-4 dark:border-stone-800">
