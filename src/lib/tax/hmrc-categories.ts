@@ -8,77 +8,99 @@ export const HMRC_CATEGORIES = {
     key: "office_costs",
     label: "Office costs",
     sa103Box: "Box 17",
-    description: "Stationery, phone bills, broadband, software SaaS",
+    description:
+      "Day-to-day running costs of the business that aren’t materials or travel. Includes phone (business %), stationery, software subscriptions, postage, and protective workwear/PPE.",
+    examples: "Mobile bill, safety boots, work trousers, accounting app",
     deductible: true,
   },
   travel_vehicle: {
     key: "travel_vehicle",
     label: "Travel & vehicle costs",
     sa103Box: "Box 20 / 21",
-    description: "Fuel, parking, train fares, simplified mileage",
+    description:
+      "Getting to and from client jobs. Fuel, parking, public transport, van hire, commercial van insurance and MOT. Or use simplified mileage (45p/mile for the first 10,000 business miles) instead of actual vehicle costs — don’t claim both on the same miles.",
+    examples: "Petrol, parking, van insurance, Trainline",
     deductible: true,
   },
   premises: {
     key: "premises",
     label: "Premises costs",
     sa103Box: "Box 16",
-    description: "Rent, light, heat, power, home office use",
+    description:
+      "Costs of a business base: rent for a yard/unit, storage for tools, business proportion of heat/power if you have dedicated business premises. For home office, prefer HMRC simplified WFH flat rates unless you calculate an actual share carefully.",
+    examples: "Tool storage unit, Safestore, yard rent",
     deductible: true,
   },
   maintenance: {
     key: "maintenance",
     label: "Maintenance and repairs",
     sa103Box: "Box 18",
-    description: "Repairs and maintenance of business premises/equipment",
+    description:
+      "Keeping existing equipment or premises working — repairs, servicing, blade sharpening, replacement parts for tools you already own. Buying a brand-new machine is usually Capital Allowances, not repairs.",
+    examples: "Mower service, blade sharpening, replacement strimmer cord spool",
     deductible: true,
   },
   advertising: {
     key: "advertising",
     label: "Advertising, marketing & subscriptions",
     sa103Box: "Box 19",
-    description: "Marketing, ads, professional subscriptions",
+    description:
+      "Promoting the business and buying leads. Directory listings, Facebook/Google ads, leaflets, business cards, and trade platforms.",
+    examples: "Checkatrade, Rated People, MyBuilder, Bark, Vistaprint, Meta Ads",
     deductible: true,
   },
   professional_fees: {
     key: "professional_fees",
     label: "Legal, professional & financial fees",
     sa103Box: "Box 22 / 23",
-    description: "Accountancy, bank charges, loan interest",
+    description:
+      "Fees to professionals and finance costs of the business: accountant, bookkeeper, solicitor, public liability insurance, bank charges, and allowable loan interest on business borrowing.",
+    examples: "Simply Business, public liability, accountant, bank fees",
     deductible: true,
   },
   cost_of_goods: {
     key: "cost_of_goods",
     label: "Cost of goods sold",
     sa103Box: "Box 15",
-    description: "Raw materials, items for resale",
+    description:
+      "Materials and consumables used up on client jobs — plants, compost, turf, bark, fencing, gravel, fixings, and green-waste/skip fees charged as part of the work. Not long-life tools (those are Capital Allowances).",
+    examples: "B&Q plants, Travis Perkins timber, Dobbies, skip hire, compost",
     deductible: true,
   },
   staff_costs: {
     key: "staff_costs",
     label: "Staff & subcontractor costs",
     sa103Box: "Box 14 / 24",
-    description: "Wages, subcontractors, employer NI",
+    description:
+      "Paying people to help with the work: wages, casual labour, subcontractors, and related employer costs. Keep invoices/timesheets.",
+    examples: "Day-rate helper, subcontractor landscaper",
     deductible: true,
   },
   capital_allowances: {
     key: "capital_allowances",
     label: "Capital Allowances (AIA)",
     sa103Box: "Box 28–31",
-    description: "Computers, equipment, machinery under Annual Investment Allowance",
+    description:
+      "Equipment you keep and use in the business — new or second-hand. Usually claim 100% Annual Investment Allowance (AIA) in the year of purchase (e.g. Stihl Kombi, mower, trailer). Only claim the business-use percentage.",
+    examples: "Stihl Kombi, lawn mower, trailer, power tools, second-hand kit",
     deductible: true,
   },
   non_deductible: {
     key: "non_deductible",
     label: "Non-deductible / Personal",
     sa103Box: "N/A",
-    description: "Explicitly excluded from Self Assessment deductions",
+    description:
+      "Not allowable for Self Assessment: personal shopping, food/drink for yourself, entertainment, tax payments to HMRC, and transfers to your own pots/savings. Mark these so they don’t reduce taxable profit.",
+    examples: "Tesco groceries, Costa, Netflix, HMRC payment, Monzo Tax Pot transfer",
     deductible: false,
   },
   income: {
     key: "income",
     label: "Business income / turnover",
     sa103Box: "Box 9 / 10",
-    description: "Turnover and other business income",
+    description:
+      "Money in from the trade — client payments, invoices settled, cash jobs paid in. This increases turnover, it is not an expense.",
+    examples: "Client bank transfer, card payment for a garden job",
     deductible: false,
   },
 } as const;

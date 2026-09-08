@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { formatGBP } from "@/lib/utils";
 import { apiJson } from "@/lib/api-client";
+import { HMRC_CATEGORIES } from "@/lib/tax/hmrc-categories";
+import { CategoryReferenceList } from "@/components/tax/category-reference";
 import { Download, Car, Home } from "lucide-react";
 
 type Summary = {
@@ -165,7 +167,10 @@ export function TaxClient() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>SA103 category boxes</CardTitle>
-            <CardDescription>Statutory HMRC allowable expense buckets</CardDescription>
+            <CardDescription>
+              Totals for this tax year — hover the category name or see the guide below for what
+              belongs in each box
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -179,14 +184,26 @@ export function TaxClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.boxes.map((b) => (
-                    <tr key={b.key} className="border-b border-stone-100 dark:border-stone-900">
-                      <td className="py-2.5 pr-4 text-stone-500">{b.sa103Box}</td>
-                      <td className="py-2.5 pr-4">{b.label}</td>
-                      <td className="py-2.5 pr-4">{b.count}</td>
-                      <td className="py-2.5 text-right font-medium">{formatGBP(b.totalPence)}</td>
-                    </tr>
-                  ))}
+                  {data.boxes.map((b) => {
+                    const meta = HMRC_CATEGORIES[b.key as keyof typeof HMRC_CATEGORIES];
+                    return (
+                      <tr key={b.key} className="border-b border-stone-100 dark:border-stone-900">
+                        <td className="py-2.5 pr-4 align-top text-stone-500">{b.sa103Box}</td>
+                        <td className="py-2.5 pr-4 align-top">
+                          <div className="font-medium">{b.label}</div>
+                          {meta?.description && (
+                            <p className="mt-0.5 max-w-md text-xs leading-relaxed text-stone-500">
+                              {meta.description}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-2.5 pr-4 align-top">{b.count}</td>
+                        <td className="py-2.5 align-top text-right font-medium">
+                          {formatGBP(b.totalPence)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -270,6 +287,18 @@ export function TaxClient() {
           </Card>
         </div>
       </section>
+
+      <Card className="animate-rise-delay-2">
+        <CardHeader>
+          <CardTitle>Category guide</CardTitle>
+          <CardDescription>
+            What to put in each HMRC box — use this when tagging transactions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CategoryReferenceList />
+        </CardContent>
+      </Card>
     </div>
   );
 }

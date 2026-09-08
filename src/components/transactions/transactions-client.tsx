@@ -203,8 +203,13 @@ export function TransactionsClient() {
             </SelectTrigger>
             <SelectContent>
               {HMRC_CATEGORY_LIST.map((c) => (
-                <SelectItem key={c.key} value={c.key}>
-                  {c.label}
+                <SelectItem key={c.key} value={c.key} textValue={c.label}>
+                  <div className="flex flex-col gap-0.5 py-0.5">
+                    <span>{c.label}</span>
+                    <span className="max-w-[14rem] truncate text-xs font-normal text-stone-500">
+                      {c.description}
+                    </span>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -278,8 +283,13 @@ export function TransactionsClient() {
                       </SelectTrigger>
                       <SelectContent>
                         {HMRC_CATEGORY_LIST.map((c) => (
-                          <SelectItem key={c.key} value={c.key}>
-                            {c.label}
+                          <SelectItem key={c.key} value={c.key} textValue={c.label}>
+                            <div className="flex flex-col gap-0.5 py-0.5">
+                              <span>{c.label}</span>
+                              <span className="max-w-[14rem] truncate text-xs font-normal text-stone-500">
+                                {c.description}
+                              </span>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>

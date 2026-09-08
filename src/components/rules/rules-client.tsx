@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HMRC_CATEGORY_LIST } from "@/lib/tax/hmrc-categories";
+import { CategoryReferenceList } from "@/components/tax/category-reference";
 
 type Rule = {
   id: string;
@@ -138,12 +139,20 @@ export function RulesClient() {
                   </SelectTrigger>
                   <SelectContent>
                     {HMRC_CATEGORY_LIST.map((c) => (
-                      <SelectItem key={c.key} value={c.key}>
-                        {c.label}
+                      <SelectItem key={c.key} value={c.key} textValue={c.label}>
+                        <div className="flex flex-col gap-0.5 py-0.5">
+                          <span>{c.label}</span>
+                          <span className="max-w-xs text-xs font-normal text-stone-500">
+                            {c.sa103Box} · {c.description}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-stone-500">
+                  {HMRC_CATEGORY_LIST.find((c) => c.key === hmrcCategory)?.description}
+                </p>
               </div>
               <div className="space-y-1">
                 <Label>Business %</Label>
@@ -208,16 +217,12 @@ export function RulesClient() {
       <Card className="animate-rise-delay-2">
         <CardHeader>
           <CardTitle>Statutory HMRC boxes</CardTitle>
-          <CardDescription>These buckets cannot be renamed or removed</CardDescription>
+          <CardDescription>
+            Refer to these descriptions when tagging transactions. Boxes cannot be renamed or removed.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {HMRC_CATEGORY_LIST.map((c) => (
-            <div key={c.key} className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
-              <div className="text-xs text-stone-500">{c.sa103Box}</div>
-              <div className="font-medium">{c.label}</div>
-              <div className="mt-1 text-xs text-stone-500">{c.description}</div>
-            </div>
-          ))}
+        <CardContent>
+          <CategoryReferenceList />
         </CardContent>
       </Card>
     </div>
