@@ -12,6 +12,9 @@ const nextConfig = {
     NEXTAUTH_URL: nextAuthUrl,
     DEMO_MODE: process.env.DEMO_MODE ?? "",
   },
+  experimental: {
+    serverComponentsExternalPackages: ["pdf-parse"],
+  },
 };
 
 export default nextConfig;

@@ -240,7 +240,11 @@ export function DashboardClient() {
             <Link href="/tax?taxYear=2025-26" className="font-medium text-teal-800 underline dark:text-teal-300">
               2025-26 tax summary
             </Link>{" "}
-            (6 Apr 2025 – 5 Apr 2026).
+            (6 Apr 2025 – 5 Apr 2026), or{" "}
+            <Link href="/statements" className="font-medium text-teal-800 underline dark:text-teal-300">
+              import a statement
+            </Link>
+            .
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

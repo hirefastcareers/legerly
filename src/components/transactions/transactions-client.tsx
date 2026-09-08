@@ -97,6 +97,12 @@ export function TransactionsClient() {
   }, [status, accountType, q, taxYear]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("taxYear");
+    if (fromUrl) setTaxYear(fromUrl);
+  }, []);
+
+  useEffect(() => {
     load();
   }, [load]);
 

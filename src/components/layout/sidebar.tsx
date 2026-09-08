@@ -11,6 +11,7 @@ import {
   Moon,
   Sun,
   Landmark,
+  FileUp,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions Engine", icon: ArrowLeftRight },
+  { href: "/statements", label: "Import statements", icon: FileUp },
   { href: "/tax", label: "Tax Summary & HMRC Boxes", icon: Calculator },
   { href: "/rules", label: "Rules & Categories", icon: Tags },
   { href: "/receipts", label: "Receipts & Audit", icon: Receipt },
