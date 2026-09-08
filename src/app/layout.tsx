@@ -14,6 +14,8 @@ const serif = Fraunces({
   variable: "--font-serif",
 });
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Ledgerly — UK Sole Trader Tax from Monzo",
   description:
