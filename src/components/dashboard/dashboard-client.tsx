@@ -26,7 +26,8 @@ type DashboardData = {
     id: string;
     accountType: string;
     accountName: string | null;
-    encryptedAccessToken?: string;
+    isLive?: boolean;
+    isDemo?: boolean;
   }>;
   recent: Array<{
     id: string;
@@ -57,6 +58,7 @@ type DashboardData = {
     liveAccountCount: number;
     demoAccountCount: number;
     demoTransactionCount: number;
+    monzoUserCount?: number;
   };
 };
 
@@ -89,8 +91,10 @@ export function DashboardClient() {
     } else if (err === "oauth_failed") {
       setError("Monzo login failed. Check redirect URI matches exactly, then try Connect again.");
     } else if (searchParams.get("connected")) {
+      const synced = searchParams.get("synced");
+      const accounts = searchParams.get("accounts");
       setMessage(
-        `Monzo ${searchParams.get("connected")} connected. Approve access in the Monzo app if prompted, then click Sync from Monzo.`
+        `Monzo connected (${accounts ?? "?"} feeds). Imported full history on ${synced ?? "0"} account(s) while access was fresh. Later Syncs only pull the last 90 days of new activity.`
       );
     }
   }, [searchParams]);
@@ -151,14 +155,14 @@ export function DashboardClient() {
 
   const est = data.summary.estimate;
   const status = data.status;
-  const hasLivePersonal = data.accounts.some(
-    (a) => a.accountType === "personal" && a.encryptedAccessToken !== "demo"
+  const liveAccounts = (data.accounts ?? []).filter(
+    (a) => (a as { isLive?: boolean }).isLive !== false && !(a as { isDemo?: boolean }).isDemo
   );
-  const hasLiveBusiness = data.accounts.some(
-    (a) => a.accountType === "business" && a.encryptedAccessToken !== "demo"
-  );
+  const hasAnyLive = (status?.liveAccountCount ?? 0) > 0 || liveAccounts.length > 0;
   const hasDemoData =
     (status?.demoAccountCount ?? 0) > 0 || (status?.demoTransactionCount ?? 0) > 0;
+  const personalFeeds = liveAccounts.filter((a) => a.accountType === "personal");
+  const businessFeeds = liveAccounts.filter((a) => a.accountType === "business");
 
   return (
     <div className="space-y-8">
@@ -244,23 +248,61 @@ export function DashboardClient() {
           <CardHeader>
             <CardTitle>Monzo connections</CardTitle>
             <CardDescription>
-              Connect real accounts (approve the login in the Monzo app). Tokens are encrypted;
-              sync uses free rules — no OpenAI required.
+              Monzo only allows <strong>one active token per login</strong>. Connect once — we
+              discover every Personal/Business feed on that login and import <strong>full history</strong>{" "}
+              immediately (needed for your tax year). Later Syncs only pull new activity (~90 days).
+              Reconnect anytime to re-import full history. Only use “another Monzo login” if Business
+              is a completely separate Monzo user.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <ConnectCard
-              title="Personal"
-              connected={hasLivePersonal}
-              href="/api/monzo/connect?type=personal"
-              icon={<User className="h-5 w-5" />}
-            />
-            <ConnectCard
-              title="Business"
-              connected={hasLiveBusiness}
-              href="/api/monzo/connect?type=business"
-              icon={<Building2 className="h-5 w-5" />}
-            />
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <a href="/api/monzo/connect">
+                  {hasAnyLive ? "Reconnect Monzo (full history)" : "Connect Monzo"}
+                </a>
+              </Button>
+              {hasAnyLive && (
+                <Button asChild variant="outline">
+                  <a href="/api/monzo/connect?type=business">Connect another Monzo login</a>
+                </Button>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+                <div className="mb-2 flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  <span className="font-medium">Personal feeds</span>
+                  <Badge variant={personalFeeds.length ? "success" : "outline"} className="ml-auto">
+                    {personalFeeds.length || "None"}
+                  </Badge>
+                </div>
+                <ul className="space-y-1 text-sm text-stone-500">
+                  {personalFeeds.length === 0 && <li>Not linked yet</li>}
+                  {personalFeeds.map((a) => (
+                    <li key={a.id}>{a.accountName ?? a.id}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+                <div className="mb-2 flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  <span className="font-medium">Business feeds</span>
+                  <Badge variant={businessFeeds.length ? "success" : "outline"} className="ml-auto">
+                    {businessFeeds.length || "None"}
+                  </Badge>
+                </div>
+                <ul className="space-y-1 text-sm text-stone-500">
+                  {businessFeeds.length === 0 && (
+                    <li>Appears after connect if Monzo returns a business account</li>
+                  )}
+                  {businessFeeds.map((a) => (
+                    <li key={a.id}>{a.accountName ?? a.id}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -370,29 +412,3 @@ function StatCard({
   );
 }
 
-function ConnectCard({
-  title,
-  connected,
-  href,
-  icon,
-}: {
-  title: string;
-  connected: boolean;
-  href: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-stone-200 p-4 dark:border-stone-800">
-      <div className="mb-3 flex items-center gap-2">
-        {icon}
-        <span className="font-medium">Monzo {title}</span>
-        <Badge variant={connected ? "success" : "outline"} className="ml-auto">
-          {connected ? "Connected" : "Not linked"}
-        </Badge>
-      </div>
-      <Button asChild size="sm" variant={connected ? "secondary" : "default"} className="w-full">
-        <a href={href}>{connected ? "Reconnect" : `Connect ${title}`}</a>
-      </Button>
-    </div>
-  );
-}

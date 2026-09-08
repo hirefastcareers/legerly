@@ -5,6 +5,12 @@ import { getMonzoAuthUrl } from "@/lib/monzo/client";
 import { requireUserId } from "@/lib/session";
 import { hasMonzoCredentials, isDemoMode } from "@/lib/config";
 
+/**
+ * Start Monzo OAuth. One login discovers all Personal/Business accounts
+ * under that Monzo user (Monzo only allows one active token per user).
+ * Use ?type=business only as a UI hint; a separate login is only needed
+ * if Business is a different Monzo user.
+ */
 export async function GET(req: NextRequest) {
   try {
     const userId = await requireUserId();
@@ -12,7 +18,6 @@ export async function GET(req: NextRequest) {
       | "personal"
       | "business";
 
-    // Only create fake accounts when demo mode is explicitly on AND Monzo isn't configured
     if (!hasMonzoCredentials()) {
       if (!isDemoMode()) {
         return NextResponse.redirect(

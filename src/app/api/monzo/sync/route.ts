@@ -9,10 +9,18 @@ import { MonzoApiError } from "@/lib/monzo/client";
 export async function POST() {
   try {
     const userId = await requireUserId();
-    const accounts = await prisma.account.findMany({ where: { userId } });
-    const liveAccounts = accounts.filter((a) => a.encryptedAccessToken !== "demo");
+    const accounts = await prisma.account.findMany({
+      where: {
+        userId,
+        encryptedAccessToken: { not: "demo" },
+        NOT: { providerAccountId: { startsWith: "pending_" } },
+      },
+    });
 
-    if (liveAccounts.length === 0) {
+    // Deduplicate by Monzo account id (avoid syncing same feed twice)
+    const unique = Array.from(new Map(accounts.map((a) => [a.providerAccountId, a])).values());
+
+    if (unique.length === 0) {
       if (isDemoMode()) {
         const result = await seedDemoTransactions(userId);
         return NextResponse.json({ ok: true, demo: true, ...result });
@@ -21,15 +29,16 @@ export async function POST() {
         {
           ok: false,
           error:
-            "No live Monzo accounts connected. Click Connect Personal / Business, approve the push in the Monzo app, then sync within a few minutes.",
+            "No live Monzo accounts connected. Click Connect Monzo, approve in the app, and wait for the first full import to finish.",
         },
         { status: 400 }
       );
     }
 
     const results = [];
-    for (const account of liveAccounts) {
+    for (const account of unique) {
       try {
+        // Incremental sync — full tax-year history is imported on Connect (SCA window)
         const r = await syncAccountTransactions(account.id, userId, { fullHistory: false });
         results.push({
           accountId: account.id,
@@ -51,7 +60,11 @@ export async function POST() {
     }
 
     const failed = results.filter((r) => "error" in r && r.error);
-    const firstHint = failed.find((r) => "hint" in r && r.hint)?.hint;
+    const firstHint = failed.find((r) => "hint" in r && r.hint)?.hint as string | undefined;
+    const eviction = failed.some((r) =>
+      /evicted|login elsewhere/i.test(String((r as { error?: string }).error ?? ""))
+    );
+
     return NextResponse.json({
       ok: failed.length === 0,
       results,
@@ -60,9 +73,11 @@ export async function POST() {
         : undefined,
       hint:
         firstHint ||
-        (failed.length
-          ? "In Monzo: Profile → Settings → Manage apps → open Ledgerly → refresh access, then Sync again."
-          : undefined),
+        (eviction
+          ? "Monzo only allows one active login token. Use a single Connect Monzo (not separate Personal then Business). Reconnect once, approve in the app, and let the full import finish."
+          : failed.length
+            ? "Reconnect Monzo once to refresh access, then Sync again."
+            : undefined),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";

@@ -16,7 +16,10 @@ export async function syncAccountTransactions(
 ): Promise<{ imported: number; skipped: number; categorised: number; accountName?: string }> {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: dbAccountId } });
 
-  // Cheap auth check first so errors are clearer
+  if (account.providerAccountId.startsWith("pending_") || account.providerAccountId.startsWith("demo_")) {
+    throw new Error("Account is not a live Monzo feed");
+  }
+
   try {
     await pingMonzo(dbAccountId);
   } catch (err) {
@@ -26,29 +29,21 @@ export async function syncAccountTransactions(
     throw err;
   }
 
+  // Confirm this bank account still exists on the token; never rewrite providerAccountId
+  // to a different Monzo account (that caused unique constraint collisions).
   const monzoAccounts = await listMonzoAccounts(dbAccountId);
-  const matching =
-    monzoAccounts.find((a) => a.id === account.providerAccountId) ??
-    monzoAccounts.find((a) => {
-      const t = (a.type ?? "").toLowerCase();
-      return account.accountType === "business"
-        ? t.includes("business")
-        : !t.includes("business");
-    }) ??
-    monzoAccounts[0];
+  const matching = monzoAccounts.find((a) => a.id === account.providerAccountId);
 
   if (!matching) {
     throw new Error(
-      "Monzo returned no open accounts for this token. Reconnect using the Monzo login for that Personal or Business profile."
+      `Monzo account ${account.accountName ?? account.providerAccountId} is not visible on this token. Reconnect Monzo once — one login links every Personal/Business feed for that user.`
     );
   }
 
-  // Keep stored account id in sync if Monzo replaced/pending id
-  if (matching.id !== account.providerAccountId) {
+  if (matching.description && matching.description !== account.accountName) {
     await prisma.account.update({
       where: { id: dbAccountId },
       data: {
-        providerAccountId: matching.id,
         accountName: matching.description,
         description: matching.description,
       },

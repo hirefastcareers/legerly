@@ -69,14 +69,17 @@ export class MonzoApiError extends Error {
   }
 
   get userHint(): string {
+    if (/evicted|login elsewhere/i.test(this.message) || /evicted|login elsewhere/i.test(this.body)) {
+      return "Monzo revoked this token because another login created a new one. Use a single Connect Monzo (not Personal then Business separately), approve in the app, and wait for the full import.";
+    }
     if (this.code === "forbidden.verification_required" || /verification required/i.test(this.message)) {
-      return "Monzo blocked a long history request. We now sync the last 90 days only — reconnect in the Monzo app (Profile → Settings → Manage apps), then Sync again.";
+      return "Monzo blocked a long history request outside the fresh-login window. Click Reconnect Monzo (full history) to import your tax year, then use Sync for new activity only.";
     }
     if (this.status === 403) {
-      return "Open the Monzo app → approve this client (push notification), or Profile → Settings → Manage apps → refresh access, then reconnect and sync within a few minutes.";
+      return "Open the Monzo app → approve this client, or Profile → Settings → Manage apps → refresh access, then Reconnect Monzo.";
     }
     if (this.status === 401) {
-      return "Monzo access token expired or invalid. Click Connect again and approve in the Monzo app.";
+      return "Monzo access token expired or invalid. Click Reconnect Monzo and approve in the app.";
     }
     return this.message;
   }
@@ -186,19 +189,34 @@ async function getValidAccessToken(accountId: string): Promise<string> {
 
   try {
     const refreshed = await refreshMonzoToken(decryptToken(account.encryptedRefreshToken));
-    await prisma.account.update({
-      where: { id: accountId },
-      data: {
-        encryptedAccessToken: encryptToken(refreshed.access_token),
-        encryptedRefreshToken: refreshed.refresh_token
-          ? encryptToken(refreshed.refresh_token)
-          : account.encryptedRefreshToken,
-        tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-      },
-    });
+    const encryptedAccess = encryptToken(refreshed.access_token);
+    const encryptedRefresh = refreshed.refresh_token
+      ? encryptToken(refreshed.refresh_token)
+      : account.encryptedRefreshToken;
+    const tokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000);
+
+    // Same Monzo user must share one live token — update every linked feed
+    if (account.monzoUserId) {
+      await prisma.account.updateMany({
+        where: { monzoUserId: account.monzoUserId },
+        data: {
+          encryptedAccessToken: encryptedAccess,
+          encryptedRefreshToken: encryptedRefresh,
+          tokenExpiresAt,
+        },
+      });
+    } else {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: {
+          encryptedAccessToken: encryptedAccess,
+          encryptedRefreshToken: encryptedRefresh,
+          tokenExpiresAt,
+        },
+      });
+    }
     return refreshed.access_token;
   } catch (err) {
-    // Fall back to existing token — may still work briefly
     if (err instanceof MonzoApiError) throw err;
     return accessToken;
   }

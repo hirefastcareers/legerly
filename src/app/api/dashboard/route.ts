@@ -24,12 +24,22 @@ export async function GET() {
       }),
     ]);
 
-    const liveAccounts = accounts.filter((a) => a.encryptedAccessToken !== "demo");
+    const liveAccounts = accounts.filter(
+      (a) => a.encryptedAccessToken !== "demo" && !a.providerAccountId.startsWith("pending_")
+    );
     const demoAccounts = accounts.filter((a) => a.encryptedAccessToken === "demo");
 
     return NextResponse.json({
       summary,
-      accounts,
+      accounts: accounts.map((a) => ({
+        id: a.id,
+        accountType: a.accountType,
+        accountName: a.accountName,
+        description: a.description,
+        monzoUserId: a.monzoUserId,
+        isLive: a.encryptedAccessToken !== "demo" && !a.providerAccountId.startsWith("pending_"),
+        isDemo: a.encryptedAccessToken === "demo",
+      })),
       recent,
       pending,
       taxYear,
@@ -40,6 +50,7 @@ export async function GET() {
         liveAccountCount: liveAccounts.length,
         demoAccountCount: demoAccounts.length,
         demoTransactionCount: demoTxCount,
+        monzoUserCount: new Set(liveAccounts.map((a) => a.monzoUserId).filter(Boolean)).size,
       },
     });
   } catch (e) {

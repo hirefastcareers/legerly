@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { encryptToken } from "@/lib/encryption";
-import { exchangeMonzoCode, inferAccountType, listMonzoAccounts } from "@/lib/monzo/client";
-import { syncAccountTransactions } from "@/lib/monzo/sync";
+import { exchangeMonzoCode } from "@/lib/monzo/client";
+import { linkAllMonzoAccounts } from "@/lib/monzo/link-accounts";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -33,94 +33,32 @@ export async function GET(req: NextRequest) {
       ? encryptToken(tokens.refresh_token)
       : null;
 
-    // Temporarily store tokens on a placeholder to call /accounts
-    const temp = await prisma.account.create({
-      data: {
-        userId,
-        provider: "monzo",
-        providerAccountId: `pending_${tokens.user_id}_${Date.now()}`,
-        accountType,
+    const result = await linkAllMonzoAccounts(
+      userId,
+      {
         encryptedAccessToken: encryptedAccess,
         encryptedRefreshToken: encryptedRefresh,
         tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
         monzoUserId: tokens.user_id,
       },
-    });
-
-    const monzoAccounts = await listMonzoAccounts(temp.id);
-    const preferred =
-      monzoAccounts.find((a) => inferAccountType(a) === accountType) ?? monzoAccounts[0];
-
-    if (!preferred) {
-      await prisma.account.delete({ where: { id: temp.id } });
-      return NextResponse.redirect(new URL("/dashboard?error=no_accounts", req.url));
-    }
-
-    // Upsert real account and remove temp if IDs differ
-    const saved = await prisma.account.upsert({
-      where: {
-        provider_providerAccountId: {
-          provider: "monzo",
-          providerAccountId: preferred.id,
-        },
-      },
-      update: {
-        encryptedAccessToken: encryptedAccess,
-        encryptedRefreshToken: encryptedRefresh,
-        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-        accountType: inferAccountType(preferred),
-        accountName: preferred.description,
-        description: preferred.description,
-        monzoUserId: tokens.user_id,
-      },
-      create: {
-        userId,
-        provider: "monzo",
-        providerAccountId: preferred.id,
-        accountType: inferAccountType(preferred),
-        accountName: preferred.description,
-        description: preferred.description,
-        encryptedAccessToken: encryptedAccess,
-        encryptedRefreshToken: encryptedRefresh,
-        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-        monzoUserId: tokens.user_id,
-      },
-    });
-
-    if (temp.id !== saved.id) {
-      await prisma.account.delete({ where: { id: temp.id } }).catch(() => undefined);
-    }
+      { fullHistory: true, preferredType: accountType }
+    );
 
     await prisma.oAuthState.delete({ where: { id: oauthState.id } }).catch(() => undefined);
 
-    // Drop any previously seeded demo accounts/transactions for this user
-    const demoAccounts = await prisma.account.findMany({
-      where: {
-        userId,
-        OR: [{ encryptedAccessToken: "demo" }, { providerAccountId: { startsWith: "demo_" } }],
-      },
-      select: { id: true },
-    });
-    if (demoAccounts.length) {
-      await prisma.transaction.deleteMany({
-        where: { userId, accountId: { in: demoAccounts.map((a) => a.id) } },
-      });
-      await prisma.account.deleteMany({
-        where: { id: { in: demoAccounts.map((a) => a.id) } },
-      });
-    }
-    await prisma.transaction.deleteMany({
-      where: { userId, monzoTransactionId: { startsWith: "demo_" } },
-    });
-
-    // Initial sync right after SCA — try longer history, fall back to 90 days
-    await syncAccountTransactions(saved.id, userId, { fullHistory: true }).catch(console.error);
-
+    const types = Array.from(new Set(result.accounts.map((a) => a.accountType))).join(",");
     return NextResponse.redirect(
-      new URL(`/dashboard?connected=${saved.accountType}`, req.url)
+      new URL(
+        `/dashboard?connected=${encodeURIComponent(types || "monzo")}&synced=${result.synced}&accounts=${result.accounts.length}`,
+        req.url
+      )
     );
   } catch (err) {
     console.error(err);
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "NO_ACCOUNTS") {
+      return NextResponse.redirect(new URL("/dashboard?error=no_accounts", req.url));
+    }
     return NextResponse.redirect(new URL("/dashboard?error=oauth_failed", req.url));
   }
 }
